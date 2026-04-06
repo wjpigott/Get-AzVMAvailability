@@ -23,6 +23,11 @@
 .PARAMETER SubscriptionId
     One or more Azure subscription IDs to scan. If not provided, prompts interactively.
 
+.PARAMETER AllSubscriptions
+    Scan all enabled subscriptions your account can access.
+    In non-interactive mode, this enables tenant-wide quota and capacity analysis without
+    manually listing subscription IDs.
+
 .PARAMETER Region
     One or more Azure region codes to scan (e.g., 'eastus', 'westus2').
     If not provided, prompts interactively or uses defaults with -NoPrompt.
@@ -34,6 +39,31 @@
 
 .PARAMETER AutoExport
     Automatically export results without prompting.
+
+.PARAMETER CaptureQuotaHistory
+    Persist quota snapshots (Current, Limit, Available) per subscription/region/family to CSV.
+    Use this to build historical data for quota trend and quota-group planning.
+
+.PARAMETER QuotaHistoryPath
+    Directory where quota history snapshots are written when -CaptureQuotaHistory is set.
+    Default: <ExportPath>\QuotaHistory (or C:\Temp\AzVMAvailability\QuotaHistory when ExportPath is not set)
+
+.PARAMETER QuotaGroupCandidates
+    Generate a quota-group candidate report from current quota headroom, grouped by
+    subscription, region, and quota family. Uses safety buffers and optional history
+    snapshots to avoid suggesting recently used capacity.
+
+.PARAMETER QuotaGroupMinMovable
+    Minimum suggested movable vCPUs required for a row to be marked as a Candidate.
+    Default 20.
+
+.PARAMETER QuotaGroupSafetyBuffer
+    Minimum vCPU reserve to keep in each family before suggesting movable quota.
+    Default 10.
+
+.PARAMETER QuotaGroupReportPath
+    Directory for quota-group candidate CSV report output.
+    Default: <ExportPath>\QuotaGroupCandidates (or C:\Temp\AzVMAvailability\QuotaGroupCandidates when ExportPath is not set)
 
 .PARAMETER EnableDrillDown
     Enable interactive drill-down to select specific families and SKUs.
@@ -157,6 +187,11 @@
     Fully automated scan of three regions using current subscription context.
 
 .EXAMPLE
+    .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory
+    Scan all enabled subscriptions for major US regions and append quota history snapshots
+    for cross-subscription trend analysis.
+
+.EXAMPLE
     .\Get-AzVMAvailability.ps1 -EnableDrillDown -FamilyFilter "D","E","M"
     Interactive mode focused on D, E, and M series families.
 
@@ -183,6 +218,14 @@
 .EXAMPLE
     .\Get-AzVMAvailability.ps1 -NoPrompt -ShowPricing -Region "eastus","westus2"
     Automated scan with pricing enabled, no interactive prompts.
+
+.EXAMPLE
+    .\Get-AzVMAvailability.ps1 -NoPrompt -Region "eastus","eastus2" -CaptureQuotaHistory
+    Runs a scan and appends quota snapshot rows for each subscription/region/family into daily CSV history files.
+
+.EXAMPLE
+    .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -CaptureQuotaHistory
+    Scans all enabled subscriptions and generates a cross-subscription quota-group candidate report.
 
 .EXAMPLE
     .\Get-AzVMAvailability.ps1 -RegionPreset USEastWest -NoPrompt
@@ -261,6 +304,9 @@ param(
     [Alias("SubId", "Subscription")]
     [string[]]$SubscriptionId,
 
+    [Parameter(Mandatory = $false, HelpMessage = "Scan all enabled subscriptions available to current identity")]
+    [switch]$AllSubscriptions,
+
     [Parameter(Mandatory = $false, HelpMessage = "Azure region(s) to scan")]
     [Alias("Location")]
     [string[]]$Region,
@@ -274,6 +320,26 @@ param(
 
     [Parameter(Mandatory = $false, HelpMessage = "Automatically export results")]
     [switch]$AutoExport,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Capture per-run quota history snapshots for trend analysis")]
+    [switch]$CaptureQuotaHistory,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Directory path for quota history snapshot CSV files")]
+    [string]$QuotaHistoryPath,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Generate quota-group candidate report from subscription/regional quota headroom")]
+    [switch]$QuotaGroupCandidates,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Minimum suggested movable vCPUs required to mark a row as Candidate")]
+    [ValidateRange(0, 100000)]
+    [int]$QuotaGroupMinMovable = 20,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Safety buffer (vCPUs) to reserve before suggesting movable quota")]
+    [ValidateRange(0, 100000)]
+    [int]$QuotaGroupSafetyBuffer = 10,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Directory path for quota-group candidate CSV report")]
+    [string]$QuotaGroupReportPath,
 
     [Parameter(Mandatory = $false, HelpMessage = "Enable interactive family/SKU drill-down")]
     [switch]$EnableDrillDown,
@@ -460,6 +526,10 @@ foreach ($paramName in @('SubscriptionId', 'Region', 'FamilyFilter', 'SkuFilter'
     if ($val -and $val.Count -eq 1 -and $val[0] -match ',') {
         Set-Variable -Name $paramName -Value @($val[0] -split ',' | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ })
     }
+}
+
+if ($AllSubscriptions -and $SubscriptionId) {
+    throw "Cannot specify both -AllSubscriptions and -SubscriptionId. Use one selection method."
 }
 
 # Guard: -ManagementGroup, -ResourceGroup, and -Tag only valid with -LifecycleScan
@@ -1020,6 +1090,249 @@ else {
 
 if ($AutoExport -and -not $ExportPath) {
     $ExportPath = $defaultExportPath
+}
+
+if ($CaptureQuotaHistory -and -not $QuotaHistoryPath) {
+    if ($ExportPath) {
+        $QuotaHistoryPath = Join-Path $ExportPath 'QuotaHistory'
+    }
+    else {
+        $QuotaHistoryPath = Join-Path $defaultExportPath 'QuotaHistory'
+    }
+}
+
+if ($QuotaGroupCandidates -and -not $QuotaHistoryPath) {
+    if ($ExportPath) {
+        $QuotaHistoryPath = Join-Path $ExportPath 'QuotaHistory'
+    }
+    else {
+        $QuotaHistoryPath = Join-Path $defaultExportPath 'QuotaHistory'
+    }
+}
+
+if ($QuotaGroupCandidates -and -not $QuotaGroupReportPath) {
+    if ($ExportPath) {
+        $QuotaGroupReportPath = Join-Path $ExportPath 'QuotaGroupCandidates'
+    }
+    else {
+        $QuotaGroupReportPath = Join-Path $defaultExportPath 'QuotaGroupCandidates'
+    }
+}
+
+function Write-QuotaHistorySnapshot {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]$SubscriptionData,
+        [Parameter(Mandatory = $true)][string]$HistoryPath,
+        [Parameter(Mandatory = $false)][datetime]$CapturedAt = (Get-Date)
+    )
+
+    if (-not $HistoryPath) { return $null }
+    if (-not $SubscriptionData -or $SubscriptionData.Count -eq 0) { return $null }
+
+    if (-not (Test-Path -LiteralPath $HistoryPath -PathType Container)) {
+        New-Item -ItemType Directory -Path $HistoryPath -Force | Out-Null
+    }
+
+    $dailyFile = Join-Path $HistoryPath ("AzVMAvailability-QuotaHistory-{0}.csv" -f $CapturedAt.ToString('yyyyMMdd'))
+    $capturedUtc = $CapturedAt.ToUniversalTime().ToString('o')
+    $capturedLocal = $CapturedAt.ToString('yyyy-MM-dd HH:mm:ss')
+    $rows = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    foreach ($sub in $SubscriptionData) {
+        $subId = ''
+        $subName = ''
+        $regionDataList = @()
+
+        if ($sub -is [System.Collections.IDictionary]) {
+            if ($sub.Contains('SubscriptionId')) { $subId = [string]$sub['SubscriptionId'] }
+            if ($sub.Contains('SubscriptionName')) { $subName = [string]$sub['SubscriptionName'] }
+            if ($sub.Contains('RegionData')) { $regionDataList = @($sub['RegionData']) }
+        }
+        else {
+            $subId = if ($sub.PSObject.Properties['SubscriptionId']) { [string]$sub.SubscriptionId } else { '' }
+            $subName = if ($sub.PSObject.Properties['SubscriptionName']) { [string]$sub.SubscriptionName } else { '' }
+            $regionDataList = @($sub.RegionData)
+        }
+
+        foreach ($rd in $regionDataList) {
+            $regionError = $null
+            $region = ''
+            $quotaItems = @()
+
+            if ($rd -is [System.Collections.IDictionary]) {
+                if ($rd.Contains('Error')) { $regionError = $rd['Error'] }
+                if ($rd.Contains('Region')) { $region = [string]$rd['Region'] }
+                if ($rd.Contains('Quotas')) { $quotaItems = @($rd['Quotas']) }
+            }
+            else {
+                $regionError = $rd.Error
+                $region = [string]$rd.Region
+                $quotaItems = @($rd.Quotas)
+            }
+
+            if ($regionError) { continue }
+
+            foreach ($q in $quotaItems) {
+                if (-not $q) { continue }
+                $quotaName = if ($q.Name -and $q.Name.Value) { [string]$q.Name.Value } else { '' }
+                if (-not $quotaName) { continue }
+
+                $limit = $null
+                $current = $null
+                if ($null -ne $q.Limit) {
+                    try { $limit = [double]$q.Limit } catch { $limit = $null }
+                }
+                if ($null -ne $q.CurrentValue) {
+                    try { $current = [double]$q.CurrentValue } catch { $current = $null }
+                }
+                $available = if ($null -ne $limit -and $null -ne $current) { $limit - $current } else { $null }
+
+                $rows.Add([pscustomobject]@{
+                        CapturedAtUtc   = $capturedUtc
+                        CapturedAtLocal = $capturedLocal
+                        SubscriptionId  = $subId
+                        SubscriptionName = $subName
+                        Region          = $region
+                        QuotaName       = $quotaName
+                        QuotaDisplayName = if ($q.Name -and $q.Name.LocalizedValue) { [string]$q.Name.LocalizedValue } else { '' }
+                        CurrentValue    = $current
+                        Limit           = $limit
+                        Available       = $available
+                    })
+            }
+        }
+    }
+
+    if ($rows.Count -eq 0) { return $null }
+
+    $append = Test-Path -LiteralPath $dailyFile -PathType Leaf
+    $rows | Export-Csv -Path $dailyFile -NoTypeInformation -Encoding UTF8 -Append:$append
+
+    return [pscustomobject]@{
+        Path     = $dailyFile
+        RowCount = $rows.Count
+        Appended = $append
+    }
+}
+
+function Write-QuotaGroupCandidatesReport {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]$SubscriptionData,
+        [Parameter(Mandatory = $true)][string]$ReportPath,
+        [Parameter(Mandatory = $true)][int]$MinMovable,
+        [Parameter(Mandatory = $true)][int]$SafetyBuffer,
+        [Parameter(Mandatory = $false)][string]$HistoryPath,
+        [Parameter(Mandatory = $false)][datetime]$CapturedAt = (Get-Date)
+    )
+
+    if (-not $SubscriptionData -or $SubscriptionData.Count -eq 0) { return $null }
+    if (-not $ReportPath) { return $null }
+
+    if (-not (Test-Path -LiteralPath $ReportPath -PathType Container)) {
+        New-Item -ItemType Directory -Path $ReportPath -Force | Out-Null
+    }
+
+    # Build optional history lookup: key = sub|region|quotaName
+    $historyLookup = @{}
+    if ($HistoryPath -and (Test-Path -LiteralPath $HistoryPath -PathType Container)) {
+        $historyFiles = @(Get-ChildItem -Path $HistoryPath -Filter 'AzVMAvailability-QuotaHistory-*.csv' -File -ErrorAction SilentlyContinue)
+        foreach ($file in $historyFiles) {
+            $historyRows = @(Import-Csv -LiteralPath $file.FullName -ErrorAction SilentlyContinue)
+            foreach ($h in $historyRows) {
+                if (-not $h.SubscriptionId -or -not $h.Region -or -not $h.QuotaName) { continue }
+                if ($h.QuotaName -notmatch '(?i)family$') { continue }
+                $currentVal = $null
+                try { $currentVal = [double]$h.CurrentValue } catch { $currentVal = $null }
+                if ($null -eq $currentVal) { continue }
+
+                $key = "{0}|{1}|{2}" -f $h.SubscriptionId.ToLower(), $h.Region.ToLower(), $h.QuotaName.ToLower()
+                if (-not $historyLookup.ContainsKey($key)) {
+                    $historyLookup[$key] = @{
+                        PeakCurrent = $currentVal
+                        Snapshots   = @{ }
+                    }
+                }
+                else {
+                    if ($currentVal -gt [double]$historyLookup[$key].PeakCurrent) {
+                        $historyLookup[$key].PeakCurrent = $currentVal
+                    }
+                }
+                if ($h.CapturedAtUtc) {
+                    $historyLookup[$key].Snapshots[$h.CapturedAtUtc] = $true
+                }
+            }
+        }
+    }
+
+    $rows = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($sub in $SubscriptionData) {
+        $subId = if ($sub.SubscriptionId) { [string]$sub.SubscriptionId } else { '' }
+        $subName = if ($sub.SubscriptionName) { [string]$sub.SubscriptionName } else { '' }
+        if (-not $subId) { continue }
+
+        foreach ($rd in @($sub.RegionData)) {
+            if ($rd.Error) { continue }
+            $region = [string]$rd.Region
+            foreach ($q in @($rd.Quotas)) {
+                if (-not $q -or -not $q.Name -or -not $q.Name.Value) { continue }
+                $quotaName = [string]$q.Name.Value
+                if ($quotaName -notmatch '(?i)family$') { continue }
+
+                $limit = $null
+                $current = $null
+                try { $limit = [double]$q.Limit } catch { $limit = $null }
+                try { $current = [double]$q.CurrentValue } catch { $current = $null }
+                if ($null -eq $limit -or $null -eq $current) { continue }
+
+                $available = $limit - $current
+                $baselineReserve = [math]::Max([double]$SafetyBuffer, [math]::Ceiling($limit * 0.10))
+
+                $hKey = "{0}|{1}|{2}" -f $subId.ToLower(), $region.ToLower(), $quotaName.ToLower()
+                $historyPeakCurrent = $null
+                $historySnapshotCount = 0
+                if ($historyLookup.ContainsKey($hKey)) {
+                    $historyPeakCurrent = [double]$historyLookup[$hKey].PeakCurrent
+                    $historySnapshotCount = @($historyLookup[$hKey].Snapshots.Keys).Count
+                }
+
+                $historyBurstReserve = if ($null -ne $historyPeakCurrent -and $historyPeakCurrent -gt $current) { $historyPeakCurrent - $current } else { 0 }
+                $reserve = [math]::Max($baselineReserve, $historyBurstReserve)
+                $suggestedMovable = [math]::Max(0, $available - $reserve)
+                $status = if ($suggestedMovable -ge $MinMovable) { 'Candidate' } elseif ($available -gt 0) { 'Hold' } else { 'None' }
+
+                $rows.Add([pscustomobject]@{
+                        CapturedAtUtc         = $CapturedAt.ToUniversalTime().ToString('o')
+                        SubscriptionName      = $subName
+                        SubscriptionId        = $subId
+                        Region                = $region
+                        QuotaName             = $quotaName
+                        CurrentValue          = $current
+                        Limit                 = $limit
+                        Available             = $available
+                        BaselineReserve       = $baselineReserve
+                        HistoryPeakCurrent    = $historyPeakCurrent
+                        HistorySnapshotCount  = $historySnapshotCount
+                        ReserveUsed           = $reserve
+                        SuggestedMovable      = $suggestedMovable
+                        CandidateStatus       = $status
+                    })
+            }
+        }
+    }
+
+    if ($rows.Count -eq 0) { return $null }
+
+    $orderedRows = @($rows | Sort-Object @{Expression = 'CandidateStatus'; Descending = $false }, @{Expression = 'SuggestedMovable'; Descending = $true }, SubscriptionName, Region, QuotaName)
+    $timestamp = $CapturedAt.ToString('yyyyMMdd-HHmmss')
+    $outFile = Join-Path $ReportPath "AzVMAvailability-QuotaGroupCandidates-$timestamp.csv"
+    $orderedRows | Export-Csv -Path $outFile -NoTypeInformation -Encoding UTF8
+
+    return [pscustomobject]@{
+        Path           = $outFile
+        RowCount       = $orderedRows.Count
+        CandidateCount = @($orderedRows | Where-Object { $_.CandidateStatus -eq 'Candidate' }).Count
+        Rows           = $orderedRows
+    }
 }
 
 #endregion Configuration
@@ -3673,14 +3986,26 @@ $script:RunContext.AzureEndpoints = $script:AzureEndpoints
 
 if (-not $TargetSubIds) {
     if ($NoPrompt) {
-        $ctx = Get-AzContext -ErrorAction SilentlyContinue
-        if ($ctx -and $ctx.Subscription.Id) {
-            $TargetSubIds = @($ctx.Subscription.Id)
-            Write-Host "Using current subscription: $($ctx.Subscription.Name)" -ForegroundColor Cyan
+        if ($AllSubscriptions) {
+            $allSubs = @(Get-AzSubscription -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Enabled' } | Select-Object Name, Id)
+            if ($allSubs.Count -gt 0) {
+                $TargetSubIds = @($allSubs | ForEach-Object { $_.Id })
+                Write-Host "Using all enabled subscriptions: $($TargetSubIds.Count)" -ForegroundColor Cyan
+            }
+            else {
+                throw "No enabled subscriptions found for current identity."
+            }
         }
         else {
-            Write-Host "ERROR: No subscription context. Run Connect-AzAccount or specify -SubscriptionId" -ForegroundColor Red
-            throw "No subscription context available. Run Connect-AzAccount or specify -SubscriptionId."
+            $ctx = Get-AzContext -ErrorAction SilentlyContinue
+            if ($ctx -and $ctx.Subscription.Id) {
+                $TargetSubIds = @($ctx.Subscription.Id)
+                Write-Host "Using current subscription: $($ctx.Subscription.Name)" -ForegroundColor Cyan
+            }
+            else {
+                Write-Host "ERROR: No subscription context. Run Connect-AzAccount or specify -SubscriptionId" -ForegroundColor Red
+                throw "No subscription context available. Run Connect-AzAccount or specify -SubscriptionId."
+            }
         }
     }
     else {
@@ -4496,6 +4821,48 @@ catch {
 }
 
 #endregion Data Collection
+
+if ($CaptureQuotaHistory) {
+    try {
+        $historyResult = Write-QuotaHistorySnapshot -SubscriptionData $allSubscriptionData -HistoryPath $QuotaHistoryPath
+        if ($historyResult) {
+            $writeMode = if ($historyResult.Appended) { 'Appended' } else { 'Created' }
+            Write-Host "$writeMode quota history snapshot: $($historyResult.Path) ($($historyResult.RowCount) rows)" -ForegroundColor Green
+        }
+        else {
+            Write-Warning "Quota history capture was requested, but no quota rows were available to persist."
+        }
+    }
+    catch {
+        Write-Warning "Quota history capture failed: $($_.Exception.Message)"
+    }
+}
+
+if ($QuotaGroupCandidates) {
+    try {
+        $candidateReport = Write-QuotaGroupCandidatesReport -SubscriptionData $allSubscriptionData -ReportPath $QuotaGroupReportPath -MinMovable $QuotaGroupMinMovable -SafetyBuffer $QuotaGroupSafetyBuffer -HistoryPath $QuotaHistoryPath
+        if ($candidateReport) {
+            Write-Host "Quota-group candidates report: $($candidateReport.Path) ($($candidateReport.CandidateCount) candidate rows / $($candidateReport.RowCount) total)" -ForegroundColor Green
+            if (-not $JsonOutput) {
+                $preview = @($candidateReport.Rows | Where-Object { $_.CandidateStatus -eq 'Candidate' } | Select-Object -First 20 SubscriptionName, Region, QuotaName, CurrentValue, Limit, Available, ReserveUsed, SuggestedMovable)
+                if ($preview.Count -gt 0) {
+                    Write-Host "Top quota-group candidates:" -ForegroundColor Cyan
+                    $preview | Format-Table -AutoSize | Out-Host
+                }
+                else {
+                    Write-Host "No quota families met the candidate threshold. Consider lowering -QuotaGroupMinMovable." -ForegroundColor Yellow
+                }
+            }
+        }
+        else {
+            Write-Warning "Quota-group candidate report requested, but no family-level quota rows were found."
+        }
+    }
+    catch {
+        Write-Warning "Quota-group candidate report failed: $($_.Exception.Message)"
+    }
+}
+
 #region Inventory Readiness
 
 if ($Inventory -and $Inventory.Count -gt 0) {

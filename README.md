@@ -232,11 +232,18 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 | Parameter               | Type     | Description                                                                                                               |
 | ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `-SubscriptionId`       | String[] | Azure subscription ID(s) to scan                                                                                          |
+| `-AllSubscriptions`     | Switch   | Scan all enabled subscriptions available to your identity (tenant-wide view for quota/capacity planning)                |
 | `-Region`               | String[] | Azure region code(s) (e.g., 'eastus', 'westus2')                                                                          |
 | `-RegionPreset`         | String   | Predefined region set (see table below). Auto-sets environment for sovereign clouds.                                      |
 | `-Environment`          | String   | Azure cloud (default: auto-detect). Options: AzureCloud, AzureUSGovernment, AzureChinaCloud, AzureGermanCloud             |
 | `-ExportPath`           | String   | Directory for export files                                                                                                |
 | `-AutoExport`           | Switch   | Export without prompting                                                                                                  |
+| `-CaptureQuotaHistory`  | Switch   | Append per-run quota snapshots (Current/Limit/Available by subscription+region+quota family) to CSV history files       |
+| `-QuotaHistoryPath`     | String   | Directory for quota history snapshots. Default: `<ExportPath>\\QuotaHistory` or `C:\Temp\AzVMAvailability\QuotaHistory` |
+| `-QuotaGroupCandidates` | Switch   | Generate a cross-subscription quota-group candidate report using family-level quota headroom and safety reserves         |
+| `-QuotaGroupMinMovable` | Int      | Minimum suggested movable vCPUs required for a row to be marked as a Candidate (default 20)                             |
+| `-QuotaGroupSafetyBuffer` | Int    | Minimum vCPU reserve to keep per family before suggesting movable quota (default 10)                                     |
+| `-QuotaGroupReportPath` | String   | Directory for quota-group candidate CSV output. Default: `<ExportPath>\\QuotaGroupCandidates` or `C:\Temp\AzVMAvailability\QuotaGroupCandidates` |
 | `-EnableDrillDown`      | Switch   | Interactive family/SKU exploration                                                                                        |
 | `-FamilyFilter`         | String[] | Filter to specific VM families                                                                                            |
 | `-SkuFilter`            | String[] | Filter to specific SKUs (supports wildcards)                                                                              |
