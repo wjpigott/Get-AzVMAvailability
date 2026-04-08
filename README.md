@@ -244,6 +244,13 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 | `-QuotaGroupMinMovable` | Int      | Minimum suggested movable vCPUs required for a row to be marked as a Candidate (default 20)                             |
 | `-QuotaGroupSafetyBuffer` | Int    | Minimum vCPU reserve to keep per family before suggesting movable quota (default 10)                                     |
 | `-QuotaGroupReportPath` | String   | Directory for quota-group candidate CSV output. Default: `<ExportPath>\\QuotaGroupCandidates` or `C:\Temp\AzVMAvailability\QuotaGroupCandidates` |
+| `-QuotaGroupDiscover`   | Switch   | Discover quota groups across accessible management groups                                                                  |
+| `-QuotaGroupManagementGroupId` | String | Target management group id for quota-group plan/apply (for example `SharedCapacityDemo`)                             |
+| `-QuotaGroupName`       | String   | Target quota group name for quota-group plan/apply                                                                         |
+| `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
+| `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
+| `-QuotaGroupForceConfirm` | Switch | Skip interactive APPLY prompt; required for non-interactive apply                                                          |
+| `-QuotaGroupApplyMaxRows` | Int    | Safety cap for apply mode (max rows submitted in one run, default 100)                                                   |
 | `-EnableDrillDown`      | Switch   | Interactive family/SKU exploration                                                                                        |
 | `-FamilyFilter`         | String[] | Filter to specific VM families                                                                                            |
 | `-SkuFilter`            | String[] | Filter to specific SKUs (supports wildcards)                                                                              |
@@ -281,6 +288,187 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 > **Backward compatibility:** The previous parameter names `-Fleet`, `-FleetFile`, and `-GenerateFleetTemplate` still work as aliases.
 
 > **Tuning tip:** Use `-MinScore 0` to see all candidates when capacity is tight, or raise it (e.g., 70) to prioritize closer matches.
+
+## QuotaGroup Planning
+
+QuotaGroup Planning helps you identify unused quota across subscriptions, map it to an existing quota group, and safely plan (or apply) quota reallocations.
+
+### Why this exists
+
+- Quota is scoped by **subscription + region + quota family**, so single-subscription checks are incomplete.
+- Group-based quota decisions require cross-subscription visibility and safety buffers.
+- Quota moves are sensitive operations and should be confirmation-gated.
+
+### Workflow Summary
+
+1. **Collect history snapshots** (optional but recommended)
+2. **Generate quota-group candidates** from current + historical headroom
+3. **Discover quota groups** across accessible management groups
+4. **Select target group** (`-QuotaGroupManagementGroupId` + `-QuotaGroupName`)
+5. **Build move plan** with `ReadyToApply` vs blocked rows
+6. **Apply plan** only after explicit confirmation
+
+### Key Parameters
+
+- `-AllSubscriptions` — include all enabled subscriptions for tenant-wide analysis
+- `-CaptureQuotaHistory` — append per-run snapshots for trend analysis
+- `-QuotaHistoryPath` — history CSV output path
+- `-QuotaGroupCandidates` — generate candidate report from available headroom
+- `-QuotaGroupMinMovable` — minimum movable amount to mark candidate rows
+- `-QuotaGroupSafetyBuffer` — reserve floor to keep before suggesting movement
+- `-QuotaGroupReportPath` — output path for candidate/plan/apply reports
+- `-QuotaGroupDiscover` — discover groups across accessible management groups
+- `-QuotaGroupManagementGroupId` — target management group (for example `SharedCapacityDemo`)
+- `-QuotaGroupName` — target quota group name
+- `-QuotaGroupPlan` — generate move plan against selected quota group
+- `-QuotaGroupApply` — submit allocation PATCH requests for `ReadyToApply` rows
+- `-QuotaGroupForceConfirm` — bypass interactive APPLY prompt (automation only)
+- `-QuotaGroupApplyMaxRows` — safety cap on rows applied in one run
+
+### Safety Model
+
+- `-QuotaGroupApply` never runs silently.
+- In interactive mode, apply requires typing `APPLY`.
+- In non-interactive mode (`-NoPrompt`), apply requires `-QuotaGroupForceConfirm`.
+- Apply is capped by `-QuotaGroupApplyMaxRows` to prevent large accidental changes.
+- Planning exports auditable CSV artifacts before any write action.
+
+### Reports Produced
+
+- **Quota history**: `AzVMAvailability-QuotaHistory-YYYYMMDD.csv`
+- **Candidates**: `AzVMAvailability-QuotaGroupCandidates-<timestamp>.csv`
+- **Move plan**: `AzVMAvailability-QuotaGroupMovePlan-<timestamp>.csv`
+- **Apply results**: `AzVMAvailability-QuotaGroupApply-<timestamp>.csv`
+
+### Example Commands
+
+Collect history across all subscriptions:
+
+```powershell
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory
+```
+
+Generate candidates + discover quota groups:
+
+```powershell
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
+    -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupDiscover
+```
+
+Create a move plan against a specific target group:
+
+```powershell
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
+    -QuotaGroupCandidates -QuotaGroupPlan `
+    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+```
+
+Apply (interactive confirmation required):
+
+```powershell
+.\Get-AzVMAvailability.ps1 -AllSubscriptions -RegionPreset USMajor `
+    -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply `
+    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+```
+
+Apply in automation (explicit force + cap):
+
+```powershell
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
+    -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
+    -QuotaGroupApplyMaxRows 25 `
+    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+```
+
+### Ready-to-Import Scheduled Tasks
+
+To build one week of baseline history automatically, generate Task Scheduler artifacts with:
+
+```powershell
+.\tools\New-QuotaPlanningScheduledTasks.ps1 `
+    -ManagementGroupId "SharedCapacityDemo" `
+    -GroupQuotaName "groupquota1"
+```
+
+This creates files under `artifacts\scheduled-tasks`:
+
+- `<TaskPrefix>-Hourly-Baseline.xml` (history + candidate capture every hour)
+- `<TaskPrefix>-Daily-Plan.xml` (daily group discovery + move planning)
+- `Import-QuotaPlanningScheduledTasks.ps1` (imports both XML tasks)
+
+Import the generated tasks:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\artifacts\scheduled-tasks\Import-QuotaPlanningScheduledTasks.ps1
+```
+
+You can customize schedule defaults with:
+
+- `-RegionPreset` (default `USMajor`)
+- `-DailyPlanHour` (default `6`)
+- `-TaskPrefix`
+- `-OutputPath`
+
+### Permissions Note
+
+Quota group APIs are management-group scoped and may require additional RBAC permissions beyond normal subscription quota read access. If discovery/plan returns `401` or `403`, verify your permissions on the target management group and quota provider scope.
+
+### QuotaGroup API Reference
+
+QuotaGroup discovery/plan/apply in this tool uses the Microsoft.Quota REST API (`api-version=2025-09-01`) against the current Azure environment's Resource Manager endpoint.
+
+Provider and auth prerequisites:
+
+- Register `Microsoft.Quota` in each participating subscription.
+- Ensure identity has quota-group permissions at management group scope (plus subscription-level quota visibility).
+- The bearer token is acquired from `Get-AzAccessToken -ResourceUrl <ARM endpoint>` and sent to REST calls as `Authorization: Bearer <token>`.
+
+Endpoint patterns used by the workflow:
+
+```text
+GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/providers/Microsoft.Quota/groupQuotas?api-version=2025-09-01
+```
+
+Lists quota groups for discovery mode.
+
+```text
+GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/subscriptions?api-version=2025-09-01
+```
+
+Lists subscriptions currently attached to the selected quota group.
+
+```text
+GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscriptions/{subscriptionId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/resourceProviders/Microsoft.Compute/quotaAllocations/{location}?api-version=2025-09-01
+```
+
+Reads per-family group allocation state used by move planning (`limit`, `shareableQuota`, `provisioningState`).
+
+```text
+PATCH /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscriptions/{subscriptionId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/resourceProviders/Microsoft.Compute/quotaAllocations/{location}?api-version=2025-09-01
+```
+
+Applies allocation changes for `ReadyToApply` rows. Request body shape:
+
+```json
+{
+    "properties": {
+        "value": [
+            {
+                "properties": {
+                    "resourceName": "standardbsfamily",
+                    "limit": 99
+                }
+            }
+        ]
+    }
+}
+```
+
+Operational notes:
+
+- Quota APIs can return `RequestThrottled`; honor `Retry-After` before re-submitting.
+- Read-after-write should validate updated limits from `quotaAllocations/{location}` for the same `resourceName`.
+- Resource names are provider-defined family keys (for example `standardbsfamily`, `standarddasv5family`).
 
 ### Compatibility Gate
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **QuotaGroup API reference docs** — Expanded README QuotaGroup Planning section with explicit Microsoft.Quota endpoint patterns (`groupQuotas`, `groupQuotas/{name}/subscriptions`, `quotaAllocations/{location}` GET/PATCH), request payload example, and operational notes for throttling/retry and read-after-write validation.
+
+### Fixed
+- **Quota-group bearer token compatibility** — `Get-QuotaApiBearerToken` now safely handles `Get-AzAccessToken` responses where `.Token` is a `SecureString`, preventing authorization failures in quota-group discovery/plan/apply on newer Az module builds.
+
 ### Changed
 - **README audit** — Added "What's New" section; expanded Features list with lifecycle, placement, spot, JSON output, inventory, and deployment mapping; added 8 missing parameters to Parameters table (`-ShowSpot`, `-ShowPlacement`, `-DesiredCount`, `-NoQuota`, `-SubMap`, `-RGMap`, `-AllowMixedArch`, `-MaxRetries`); added `Az.ResourceGraph` to Requirements; added lifecycle/retirement and inventory use cases; added lifecycle row to Quick Comparison table
 - **ROADMAP audit** — Marked 9 shipped backlog items as complete (Fleet Planning, Agent Integration, Module Structure, Backward-Compatible Wrapper, ARG Current VM Inventory, Cross-Subscription Discovery, Deployment Density, Spot Pricing)

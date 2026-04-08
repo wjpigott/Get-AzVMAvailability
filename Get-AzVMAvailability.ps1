@@ -65,6 +65,29 @@
     Directory for quota-group candidate CSV report output.
     Default: <ExportPath>\QuotaGroupCandidates (or C:\Temp\AzVMAvailability\QuotaGroupCandidates when ExportPath is not set)
 
+.PARAMETER QuotaGroupDiscover
+    Discover quota groups across management groups and display selectable targets.
+
+.PARAMETER QuotaGroupManagementGroupId
+    Target management group id for quota-group planning/apply. If omitted, discovery
+    searches all accessible management groups.
+
+.PARAMETER QuotaGroupName
+    Target quota group name for planning/apply.
+
+.PARAMETER QuotaGroupPlan
+    Generate a quota move/change plan against a selected quota group using candidate rows.
+
+.PARAMETER QuotaGroupApply
+    Apply quota allocation PATCH requests for plan rows marked ReadyToApply.
+    Requires explicit confirmation unless -QuotaGroupForceConfirm is provided.
+
+.PARAMETER QuotaGroupForceConfirm
+    Skip interactive APPLY confirmation prompt for non-interactive automation.
+
+.PARAMETER QuotaGroupApplyMaxRows
+    Safety cap for number of plan rows to apply in a single run. Default 100.
+
 .PARAMETER EnableDrillDown
     Enable interactive drill-down to select specific families and SKUs.
 
@@ -228,6 +251,10 @@
     Scans all enabled subscriptions and generates a cross-subscription quota-group candidate report.
 
 .EXAMPLE
+    .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId SharedCapacityDemo -QuotaGroupName groupquota1
+    Generates a quota-group move plan against an existing quota group.
+
+.EXAMPLE
     .\Get-AzVMAvailability.ps1 -RegionPreset USEastWest -NoPrompt
     Scan US East/West regions (eastus, eastus2, westus, westus2) using a preset.
 
@@ -340,6 +367,28 @@ param(
 
     [Parameter(Mandatory = $false, HelpMessage = "Directory path for quota-group candidate CSV report")]
     [string]$QuotaGroupReportPath,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Discover quota groups across accessible management groups")]
+    [switch]$QuotaGroupDiscover,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Target management group id for quota-group plan/apply")]
+    [string]$QuotaGroupManagementGroupId,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Target quota group name for quota-group plan/apply")]
+    [string]$QuotaGroupName,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Generate quota-group move plan using candidate rows")]
+    [switch]$QuotaGroupPlan,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Apply quota-group move plan via allocation PATCH requests")]
+    [switch]$QuotaGroupApply,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Skip interactive confirmation for quota-group apply")]
+    [switch]$QuotaGroupForceConfirm,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Safety cap: max plan rows to apply in one run")]
+    [ValidateRange(1, 10000)]
+    [int]$QuotaGroupApplyMaxRows = 100,
 
     [Parameter(Mandatory = $false, HelpMessage = "Enable interactive family/SKU drill-down")]
     [switch]$EnableDrillDown,
@@ -530,6 +579,18 @@ foreach ($paramName in @('SubscriptionId', 'Region', 'FamilyFilter', 'SkuFilter'
 
 if ($AllSubscriptions -and $SubscriptionId) {
     throw "Cannot specify both -AllSubscriptions and -SubscriptionId. Use one selection method."
+}
+
+if ($QuotaGroupApply -and -not $QuotaGroupPlan) {
+    $QuotaGroupPlan = $true
+}
+
+if ($QuotaGroupApply -and $NoPrompt -and -not $QuotaGroupForceConfirm) {
+    throw "-QuotaGroupApply with -NoPrompt requires -QuotaGroupForceConfirm to prevent accidental quota moves."
+}
+
+if (($QuotaGroupPlan -or $QuotaGroupApply) -and -not $QuotaGroupCandidates) {
+    $QuotaGroupCandidates = $true
 }
 
 # Guard: -ManagementGroup, -ResourceGroup, and -Tag only valid with -LifecycleScan
@@ -1119,6 +1180,15 @@ if ($QuotaGroupCandidates -and -not $QuotaGroupReportPath) {
     }
 }
 
+if (($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) -and -not $QuotaGroupReportPath) {
+    if ($ExportPath) {
+        $QuotaGroupReportPath = Join-Path $ExportPath 'QuotaGroupCandidates'
+    }
+    else {
+        $QuotaGroupReportPath = Join-Path $defaultExportPath 'QuotaGroupCandidates'
+    }
+}
+
 function Write-QuotaHistorySnapshot {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]$SubscriptionData,
@@ -1332,6 +1402,215 @@ function Write-QuotaGroupCandidatesReport {
         RowCount       = $orderedRows.Count
         CandidateCount = @($orderedRows | Where-Object { $_.CandidateStatus -eq 'Candidate' }).Count
         Rows           = $orderedRows
+    }
+}
+
+function Get-QuotaApiBearerToken {
+    param([Parameter(Mandatory = $true)][string]$ArmUrl)
+    $tokenResult = Get-AzAccessToken -ResourceUrl $ArmUrl -ErrorAction Stop
+    if ($tokenResult.Token -is [System.Security.SecureString]) {
+        return [System.Net.NetworkCredential]::new('', $tokenResult.Token).Password
+    }
+    return [string]$tokenResult.Token
+}
+
+function Invoke-QuotaApiRequest {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('GET', 'PUT', 'PATCH', 'DELETE')][string]$Method,
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$BearerToken,
+        [Parameter(Mandatory = $false)][object]$Body
+    )
+
+    $headers = @{ Authorization = "Bearer $BearerToken" }
+    if ($null -ne $Body) {
+        return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -ContentType 'application/json' -Body ($Body | ConvertTo-Json -Depth 20) -ErrorAction Stop
+    }
+    return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -ErrorAction Stop
+}
+
+function Invoke-QuotaApiPagedGet {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$BearerToken
+    )
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    $nextUri = $Uri
+    while ($nextUri) {
+        $resp = Invoke-QuotaApiRequest -Method GET -Uri $nextUri -BearerToken $BearerToken
+        if ($resp.value) {
+            foreach ($i in @($resp.value)) { $items.Add($i) }
+        }
+        $nextUri = if ($resp.nextLink) { [string]$resp.nextLink } else { $null }
+    }
+    return @($items)
+}
+
+function Get-QuotaGroupCatalog {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArmUrl,
+        [Parameter(Mandatory = $true)][string]$ApiVersion,
+        [Parameter(Mandatory = $true)][string]$BearerToken,
+        [Parameter(Mandatory = $false)][string]$ManagementGroupId
+    )
+
+    $mgIds = @()
+    if ($ManagementGroupId) {
+        $mgIds = @($ManagementGroupId)
+    }
+    else {
+        $mgIds = @((Get-AzManagementGroup -Expand -Recurse -ErrorAction Stop | Select-Object -ExpandProperty Name -Unique))
+        if ($mgIds.Count -eq 0) {
+            $mgIds = @((Get-AzManagementGroup -ErrorAction Stop | Select-Object -ExpandProperty Name -Unique))
+        }
+    }
+
+    $catalog = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($mg in $mgIds) {
+        $uri = "$ArmUrl/providers/Microsoft.Management/managementGroups/$mg/providers/Microsoft.Quota/groupQuotas?api-version=$ApiVersion"
+        try {
+            $groups = @(Invoke-QuotaApiPagedGet -Uri $uri -BearerToken $BearerToken)
+            foreach ($g in $groups) {
+                $catalog.Add([pscustomobject]@{
+                        ManagementGroupId = $mg
+                        GroupQuotaName    = [string]$g.name
+                        DisplayName       = if ($g.properties.displayName) { [string]$g.properties.displayName } else { [string]$g.name }
+                        GroupType         = if ($g.properties.groupType) { [string]$g.properties.groupType } else { '' }
+                        ProvisioningState = if ($g.properties.provisioningState) { [string]$g.properties.provisioningState } else { '' }
+                    })
+            }
+        }
+        catch {
+            Write-Verbose "Quota group listing failed for management group '$mg': $($_.Exception.Message)"
+        }
+    }
+    return @($catalog)
+}
+
+function Get-QuotaGroupSubscriptionIds {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArmUrl,
+        [Parameter(Mandatory = $true)][string]$ApiVersion,
+        [Parameter(Mandatory = $true)][string]$BearerToken,
+        [Parameter(Mandatory = $true)][string]$ManagementGroupId,
+        [Parameter(Mandatory = $true)][string]$GroupQuotaName
+    )
+
+    $uri = "$ArmUrl/providers/Microsoft.Management/managementGroups/$ManagementGroupId/providers/Microsoft.Quota/groupQuotas/$GroupQuotaName/subscriptions?api-version=$ApiVersion"
+    $items = @(Invoke-QuotaApiPagedGet -Uri $uri -BearerToken $BearerToken)
+    return @($items | ForEach-Object { [string]$_.properties.subscriptionId } | Where-Object { $_ } | Select-Object -Unique)
+}
+
+function Get-QuotaGroupAllocationEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArmUrl,
+        [Parameter(Mandatory = $true)][string]$ApiVersion,
+        [Parameter(Mandatory = $true)][string]$BearerToken,
+        [Parameter(Mandatory = $true)][string]$ManagementGroupId,
+        [Parameter(Mandatory = $true)][string]$GroupQuotaName,
+        [Parameter(Mandatory = $true)][string]$SubscriptionId,
+        [Parameter(Mandatory = $true)][string]$Region,
+        [Parameter(Mandatory = $true)][string]$QuotaName,
+        [Parameter(Mandatory = $false)][string]$ResourceProviderName = 'Microsoft.Compute'
+    )
+
+    $uri = "$ArmUrl/providers/Microsoft.Management/managementGroups/$ManagementGroupId/subscriptions/$SubscriptionId/providers/Microsoft.Quota/groupQuotas/$GroupQuotaName/resourceProviders/$ResourceProviderName/quotaAllocations/$Region?api-version=$ApiVersion"
+    $resp = Invoke-QuotaApiRequest -Method GET -Uri $uri -BearerToken $BearerToken
+    foreach ($entry in @($resp.properties.value)) {
+        $resourceName = if ($entry.properties.resourceName) { [string]$entry.properties.resourceName } elseif ($entry.properties.name.value) { [string]$entry.properties.name.value } else { '' }
+        if ($resourceName -and $resourceName.ToLower() -eq $QuotaName.ToLower()) {
+            return $entry
+        }
+    }
+    return $null
+}
+
+function Write-QuotaGroupMovePlanReport {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][array]$CandidateRows,
+        [Parameter(Mandatory = $true)][string]$ReportPath,
+        [Parameter(Mandatory = $true)][string]$ManagementGroupId,
+        [Parameter(Mandatory = $true)][string]$GroupQuotaName,
+        [Parameter(Mandatory = $true)][string[]]$GroupSubscriptionIds,
+        [Parameter(Mandatory = $true)][string]$ArmUrl,
+        [Parameter(Mandatory = $true)][string]$ApiVersion,
+        [Parameter(Mandatory = $true)][string]$BearerToken,
+        [Parameter(Mandatory = $false)][datetime]$CapturedAt = (Get-Date)
+    )
+
+    if (-not (Test-Path -LiteralPath $ReportPath -PathType Container)) {
+        New-Item -ItemType Directory -Path $ReportPath -Force | Out-Null
+    }
+
+    $groupSubsSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($sid in $GroupSubscriptionIds) { [void]$groupSubsSet.Add($sid) }
+
+    $planRows = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $sourceRows = @($CandidateRows | Where-Object { $_.CandidateStatus -eq 'Candidate' })
+
+    foreach ($r in $sourceRows) {
+        $sid = [string]$r.SubscriptionId
+        $region = [string]$r.Region
+        $quotaName = [string]$r.QuotaName
+        $inGroup = $groupSubsSet.Contains($sid)
+
+        $allocLimit = $null
+        $shareable = $null
+        $provisioningState = ''
+        if ($inGroup) {
+            try {
+                $alloc = Get-QuotaGroupAllocationEntry -ArmUrl $ArmUrl -ApiVersion $ApiVersion -BearerToken $BearerToken -ManagementGroupId $ManagementGroupId -GroupQuotaName $GroupQuotaName -SubscriptionId $sid -Region $region -QuotaName $quotaName
+                if ($alloc) {
+                    if ($null -ne $alloc.properties.limit) { $allocLimit = [double]$alloc.properties.limit }
+                    if ($null -ne $alloc.properties.shareableQuota) { $shareable = [double]$alloc.properties.shareableQuota }
+                    if ($alloc.properties.provisioningState) { $provisioningState = [string]$alloc.properties.provisioningState }
+                }
+            }
+            catch {
+                Write-Verbose ("Allocation lookup failed for {0}/{1}/{2}: {3}" -f $sid, $region, $quotaName, $_.Exception.Message)
+            }
+        }
+
+        $suggestedMovable = [double]$r.SuggestedMovable
+        $currentLimit = if ($null -ne $allocLimit) { $allocLimit } else { [double]$r.Limit }
+        $proposedLimit = [math]::Max(0, $currentLimit - $suggestedMovable)
+        $ready = ($inGroup -and $suggestedMovable -gt 0)
+        $reason = if (-not $inGroup) { 'SubscriptionNotInGroup' } elseif ($suggestedMovable -le 0) { 'NoMovableQuota' } else { 'Ready' }
+
+        $planRows.Add([pscustomobject]@{
+                CapturedAtUtc            = $CapturedAt.ToUniversalTime().ToString('o')
+                ManagementGroupId        = $ManagementGroupId
+                GroupQuotaName           = $GroupQuotaName
+                SubscriptionName         = [string]$r.SubscriptionName
+                SubscriptionId           = $sid
+                Region                   = $region
+                ResourceProviderName     = 'Microsoft.Compute'
+                QuotaName                = $quotaName
+                SubscriptionCurrentValue = [double]$r.CurrentValue
+                SubscriptionLimit        = [double]$r.Limit
+                SubscriptionAvailable    = [double]$r.Available
+                SuggestedMovable         = $suggestedMovable
+                CurrentGroupLimit        = $allocLimit
+                GroupShareableQuota      = $shareable
+                GroupProvisioningState   = $provisioningState
+                ProposedLimit            = $proposedLimit
+                InGroup                  = $inGroup
+                ReadyToApply             = $ready
+                PlanStatus               = $reason
+            })
+    }
+
+    $timestamp = $CapturedAt.ToString('yyyyMMdd-HHmmss')
+    $outFile = Join-Path $ReportPath "AzVMAvailability-QuotaGroupMovePlan-$timestamp.csv"
+    $ordered = @($planRows | Sort-Object @{Expression = 'ReadyToApply'; Descending = $true }, @{Expression = 'SuggestedMovable'; Descending = $true }, SubscriptionName, Region, QuotaName)
+    $ordered | Export-Csv -Path $outFile -NoTypeInformation -Encoding UTF8
+
+    return [pscustomobject]@{
+        Path       = $outFile
+        RowCount   = $ordered.Count
+        ReadyCount = @($ordered | Where-Object { $_.ReadyToApply }).Count
+        Rows       = $ordered
     }
 }
 
@@ -4860,6 +5139,128 @@ if ($QuotaGroupCandidates) {
     }
     catch {
         Write-Warning "Quota-group candidate report failed: $($_.Exception.Message)"
+    }
+}
+
+if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
+    try {
+        $quotaApiVersion = '2025-09-01'
+        $armUrl = $script:AzureEndpoints.ResourceManagerUrl.TrimEnd('/')
+        $quotaBearerToken = Get-QuotaApiBearerToken -ArmUrl $armUrl
+
+        $catalog = @(Get-QuotaGroupCatalog -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken -ManagementGroupId $QuotaGroupManagementGroupId)
+
+        if ($catalog.Count -eq 0) {
+            Write-Warning "No quota groups discovered in accessible management groups."
+        }
+        else {
+            Write-Host "Discovered quota groups: $($catalog.Count)" -ForegroundColor Green
+            if (-not $JsonOutput) {
+                $catalog | Sort-Object ManagementGroupId, GroupQuotaName | Select-Object ManagementGroupId, GroupQuotaName, DisplayName, GroupType, ProvisioningState | Format-Table -AutoSize | Out-Host
+            }
+        }
+
+        $selectedMgmtGroup = $QuotaGroupManagementGroupId
+        $selectedGroupQuota = $QuotaGroupName
+
+        if (($QuotaGroupPlan -or $QuotaGroupApply) -and (-not $selectedMgmtGroup -or -not $selectedGroupQuota)) {
+            if ($catalog.Count -eq 1) {
+                $selectedMgmtGroup = [string]$catalog[0].ManagementGroupId
+                $selectedGroupQuota = [string]$catalog[0].GroupQuotaName
+            }
+            elseif (-not $NoPrompt -and $catalog.Count -gt 1) {
+                Write-Host "Select quota group target for plan/apply:" -ForegroundColor Yellow
+                for ($i = 0; $i -lt $catalog.Count; $i++) {
+                    $c = $catalog[$i]
+                    Write-Host "[$($i + 1)] MG=$($c.ManagementGroupId) Group=$($c.GroupQuotaName) ($($c.DisplayName))" -ForegroundColor Cyan
+                }
+                $sel = Read-Host "Enter selection number"
+                if ($sel -match '^\d+$' -and [int]$sel -ge 1 -and [int]$sel -le $catalog.Count) {
+                    $pick = $catalog[[int]$sel - 1]
+                    $selectedMgmtGroup = [string]$pick.ManagementGroupId
+                    $selectedGroupQuota = [string]$pick.GroupQuotaName
+                }
+            }
+            else {
+                throw "Quota group target is ambiguous. Specify -QuotaGroupManagementGroupId and -QuotaGroupName (or run interactive selection)."
+            }
+        }
+
+        if ($QuotaGroupPlan -or $QuotaGroupApply) {
+            if (-not $selectedMgmtGroup -or -not $selectedGroupQuota) {
+                throw "Quota group target not resolved. Provide -QuotaGroupManagementGroupId and -QuotaGroupName."
+            }
+
+            if (-not $candidateReport) {
+                $candidateReport = Write-QuotaGroupCandidatesReport -SubscriptionData $allSubscriptionData -ReportPath $QuotaGroupReportPath -MinMovable $QuotaGroupMinMovable -SafetyBuffer $QuotaGroupSafetyBuffer -HistoryPath $QuotaHistoryPath
+            }
+            if (-not $candidateReport -or -not $candidateReport.Rows) {
+                throw "No quota-group candidate rows available to build a move plan."
+            }
+
+            $groupSubs = @(Get-QuotaGroupSubscriptionIds -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken -ManagementGroupId $selectedMgmtGroup -GroupQuotaName $selectedGroupQuota)
+            $movePlan = Write-QuotaGroupMovePlanReport -CandidateRows $candidateReport.Rows -ReportPath $QuotaGroupReportPath -ManagementGroupId $selectedMgmtGroup -GroupQuotaName $selectedGroupQuota -GroupSubscriptionIds $groupSubs -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken
+
+            Write-Host "Quota-group move plan: $($movePlan.Path) ($($movePlan.ReadyCount) ready rows / $($movePlan.RowCount) total)" -ForegroundColor Green
+            if (-not $JsonOutput) {
+                $movePlan.Rows | Where-Object { $_.ReadyToApply } | Select-Object -First 20 SubscriptionName, Region, QuotaName, SuggestedMovable, CurrentGroupLimit, ProposedLimit | Format-Table -AutoSize | Out-Host
+            }
+
+            if ($QuotaGroupApply) {
+                $readyRows = @($movePlan.Rows | Where-Object { $_.ReadyToApply })
+                if ($readyRows.Count -eq 0) {
+                    Write-Warning "No plan rows are ReadyToApply. Skipping apply."
+                }
+                else {
+                    $rowsToApply = @($readyRows | Select-Object -First $QuotaGroupApplyMaxRows)
+                    if (-not $QuotaGroupForceConfirm) {
+                        Write-Host "About to apply quota allocation changes for $($rowsToApply.Count) row(s) to group '$selectedGroupQuota' in management group '$selectedMgmtGroup'." -ForegroundColor Yellow
+                        $confirm = Read-Host "Type APPLY to continue"
+                        if ($confirm -ne 'APPLY') {
+                            throw "Quota-group apply canceled by user."
+                        }
+                    }
+
+                    $applyResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    $grouped = $rowsToApply | Group-Object SubscriptionId, Region
+                    foreach ($g in $grouped) {
+                        $sample = $g.Group[0]
+                        $patchBody = @{
+                            properties = @{
+                                value = @(
+                                    $g.Group | ForEach-Object {
+                                        @{
+                                            properties = @{
+                                                resourceName = [string]$_.QuotaName
+                                                limit        = [int64][math]::Round([double]$_.ProposedLimit, 0)
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        $patchUri = "$armUrl/providers/Microsoft.Management/managementGroups/$selectedMgmtGroup/subscriptions/$($sample.SubscriptionId)/providers/Microsoft.Quota/groupQuotas/$selectedGroupQuota/resourceProviders/Microsoft.Compute/quotaAllocations/$($sample.Region)?api-version=$quotaApiVersion"
+
+                        try {
+                            [void](Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $patchBody)
+                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; Status = 'Submitted'; Error = '' })
+                        }
+                        catch {
+                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; Status = 'Failed'; Error = $_.Exception.Message })
+                        }
+                    }
+
+                    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                    $applyFile = Join-Path $QuotaGroupReportPath "AzVMAvailability-QuotaGroupApply-$timestamp.csv"
+                    $applyResults | Export-Csv -Path $applyFile -NoTypeInformation -Encoding UTF8
+                    Write-Host "Quota-group apply report: $applyFile" -ForegroundColor Green
+                }
+            }
+        }
+    }
+    catch {
+        Write-Warning "Quota-group workflow failed: $($_.Exception.Message)"
     }
 }
 
