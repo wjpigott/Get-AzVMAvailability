@@ -16,6 +16,24 @@ This document is sanitized for handoff (no tenant-specific IDs, credentials, or 
 - Quota group model: AllocationGroup
 - Critical identity dimensions: management group + quota group + subscription + region + resource family
 
+## Prerequisites
+
+### Quota Group Must Pre-Exist
+The script **does not create quota groups**. You must create the allocation group in Azure Portal or via ARM API before running plan/apply operations.
+
+- Navigate to **Azure Portal** → **Quotas** → **My quotas** (or via subscription quotas view)
+- Select **Group quotas** or **Shared capacity**
+- Click **Create quota group**
+- Assign subscriptions to the group
+- Confirm the group name and management group ID
+
+Once the quota group exists, use its name with `-QuotaGroupName` and its management group ID with `-QuotaGroupManagementGroupId` in plan/apply commands.
+
+### Required Permissions
+- **Quota API permissions**: `Microsoft.Quota/groupQuotas/read`, `Microsoft.Quota/groupQuotas/subscriptions/read`, `Microsoft.Quota/groupQuotas/subscriptions/quotaAllocations/patch`
+- **Azure Resource Graph** (for `-LifecycleScan`): `Microsoft.ResourceGraph/resources/action`
+- **Azure Compute Resource Provider**: Standard VM SKU and quota list permissions
+
 ## Key Point About Region
 Quota allocation updates are region-scoped.
 A change in centralus does not change eastus, westus, or any other region.

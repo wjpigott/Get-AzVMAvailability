@@ -284,6 +284,8 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 # Use the GroupQuotaName from this output in -QuotaGroupName for plan/apply operations
 ```
 
+> **⚠️ Important**: The quota group must already exist in Azure before running plan/apply commands. The script does not create quota groups. Create the allocation group in [Azure Portal under Quotas → Group quotas](https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade) first.
+
 ### Quota Group: Plan Quota Movements
 ```powershell
 # Generate a plan showing proposed quota allocations to the group
