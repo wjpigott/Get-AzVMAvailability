@@ -9,6 +9,16 @@ A PowerShell tool for checking Azure VM SKU availability across regions - find w
 
 ## What's New
 
+### v1.15.0 — Quota Groups & Cross-Subscription Planning (April 2026)
+- **Quota Group Planning** — discover, analyze, and move quota across subscriptions within a shared allocation group
+- **`-CaptureQuotaHistory`** — append per-run quota snapshots (CurrentValue/Limit/Available by subscription+region+family) for trending and planning
+- **`-QuotaGroupCandidates`** — identify quota families with surplus capacity across subscriptions, showing suggested movable amounts after safety buffer
+- **`-QuotaGroupDiscover`** — enumerate available quota groups in your management group(s) to target for moves
+- **`-QuotaGroupPlan` / `-QuotaGroupApply`** — generate a move plan and apply quota reallocations via the Azure Quota API with async tracking
+- **Async Polling** — track quota group allocation requests to completion with configurable polling intervals and retry logic
+- **Real-time Integration** — runnable example script (`QuotaGroup-AllocationRequest-Example.ps1`) demonstrates direct API calls with full async workflow
+- **Comprehensive Documentation** — [QuotaGroup-Planning-Movement-Flow.md](docs/QuotaGroup-Planning-Movement-Flow.md) with API reference, examples, and flowchart
+
 ### v1.14.0 — Lifecycle & Deployment Mapping (April 2026)
 - **Lifecycle Recommendations** — feed a CSV/JSON/XLSX of deployed VMs and get retirement risk analysis with up to 6 upgrade alternatives per SKU, powered by a curated upgrade-path knowledge base
 - **`-SubMap` / `-RGMap`** — new deployment mapping sheets in XLSX exports, grouping affected VMs by subscription or resource group with risk-level enrichment
@@ -225,6 +235,133 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -FamilyFilter "D","E","M" `
     -OutputFormat "XLSX" `
     -UseAsciiIcons
+```
+
+### Quota Group: Capture Quota History
+```powershell
+# Capture current quota usage snapshot across all subscriptions
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -CaptureQuotaHistory `
+    -QuotaHistoryPath "C:\QuotaPlanning\History" `
+    -ExportPath "C:\QuotaPlanning\Reports"
+
+# Result: Appends CSV with timestamp, subscription, region, quota name, current value, limit, and available
+# Use this in scheduled tasks (e.g., hourly) to build trending data for capacity planning
+```
+
+### Quota Group: Identify Surplus Quota Candidates
+```powershell
+# Scan all subscriptions and identify families with movable quota
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -CaptureQuotaHistory `
+    -QuotaGroupCandidates `
+    -QuotaGroupMinMovable 15 `
+    -QuotaGroupSafetyBuffer 12 `
+    -QuotaHistoryPath "C:\QuotaPlanning\History" `
+    -QuotaGroupReportPath "C:\QuotaPlanning\Candidates" `
+    -ExportPath "C:\QuotaPlanning\Reports"
+
+# Result: CSV report showing subscription, region, quota family, current value, limit, and SuggestedMovable
+# Candidates are families where (Available - SafetyBuffer) >= MinMovable
+```
+
+### Quota Group: Discover Quota Groups
+```powershell
+# List available quota groups in your tenant/management group
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -QuotaGroupDiscover `
+    -QuotaGroupManagementGroupId "<management-group-id>"
+
+# Result: Console output shows discovered quota groups with their status, display name, and provisioning state
+# Use the GroupQuotaName from this output in -QuotaGroupName for plan/apply operations
+```
+
+### Quota Group: Plan Quota Movements
+```powershell
+# Generate a plan showing proposed quota allocations to the group
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -QuotaGroupCandidates `
+    -QuotaGroupDiscover `
+    -QuotaGroupPlan `
+    -QuotaGroupManagementGroupId "<management-group-id>" `
+    -QuotaGroupName "<quota-group-name>" `
+    -QuotaGroupMinMovable 15 `
+    -QuotaGroupSafetyBuffer 12 `
+    -QuotaHistoryPath "C:\QuotaPlanning\History" `
+    -QuotaGroupReportPath "C:\QuotaPlanning\Plans" `
+    -ExportPath "C:\QuotaPlanning\Reports"
+
+# Result: CSV move plan with subscription, region, family, current allocation, and proposed allocation
+# Review the plan before running with -QuotaGroupApply
+```
+
+### Quota Group: Apply Quota Movements
+```powershell
+# Apply approved quota movements from the plan
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -QuotaGroupCandidates `
+    -QuotaGroupDiscover `
+    -QuotaGroupPlan `
+    -QuotaGroupApply `
+    -QuotaGroupForceConfirm `
+    -QuotaGroupManagementGroupId "<management-group-id>" `
+    -QuotaGroupName "<quota-group-name>" `
+    -QuotaGroupMinMovable 15 `
+    -QuotaGroupSafetyBuffer 12 `
+    -QuotaGroupApplyMaxRows 5 `
+    -QuotaHistoryPath "C:\QuotaPlanning\History" `
+    -QuotaGroupReportPath "C:\QuotaPlanning\Plans" `
+    -ExportPath "C:\QuotaPlanning\Reports"
+
+# Important: Movements are asynchronous. The script polls quotaAllocationRequests until completion.
+# Review docs/QuotaGroup-Planning-Movement-Flow.md for detailed async workflow and error handling
+```
+
+### Quota Group: Scheduled Baseline & Planning
+```powershell
+# Generate scheduled tasks for hourly baselines and daily planning
+cd .\artifacts\scheduled-tasks
+powershell -ExecutionPolicy Bypass -File Import-QuotaPlanningScheduledTasks.ps1 `
+    -ScheduledTaskName "QuotaPlanning" `
+    -QuotaPlanningScriptPath "C:\Scripts\Get-AzVMAvailability\Get-AzVMAvailability.ps1" `
+    -HistoryPath "C:\Data\QuotaPlanning\History" `
+    -ReportPath "C:\Data\QuotaPlanning\Reports"
+
+# Tasks created:
+# - AzVMAvailability-Hourly-Baseline: Captures quota history every hour
+# - AzVMAvailability-Daily-Plan: Generates candidates and plan daily
+```
+
+### Quota Group: Direct API Integration
+```powershell
+# Use the runnable example script to directly call the Azure Quota API
+# Useful for integrating quota movements into custom orchestration workflows
+pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
+    -ManagementGroupId "<management-group-id>" `
+    -QuotaGroupName "<quota-group-name>" `
+    -SubscriptionId "<subscription-id-guid>" `
+    -Region "centralus" `
+    -ResourceName "standardbsfamily" `
+    -TargetLimit 300 `
+    -MaxPollAttempts 30 `
+    -PollIntervalSeconds 10
+
+# Result: Script submits PATCH request, polls quotaAllocationRequests, and reports final state
+# See examples/QuotaGroup-AllocationRequest-Example.ps1 for full implementation details
 ```
 
 ## Parameters
