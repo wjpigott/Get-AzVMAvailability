@@ -442,6 +442,7 @@ GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscri
 ```
 
 Reads per-family group allocation state used by move planning (`limit`, `shareableQuota`, `provisioningState`).
+Quota-group allocations are region-scoped; the validated live test path used `centralus` for `standardbsfamily` in a test quota group.
 
 ```text
 PATCH /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscriptions/{subscriptionId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/resourceProviders/Microsoft.Compute/quotaAllocations/{location}?api-version=2025-09-01
@@ -469,6 +470,36 @@ Operational notes:
 - Quota APIs can return `RequestThrottled`; honor `Retry-After` before re-submitting.
 - Read-after-write should validate updated limits from `quotaAllocations/{location}` for the same `resourceName`.
 - Resource names are provider-defined family keys (for example `standardbsfamily`, `standarddasv5family`).
+- Region is part of the allocation identity. A change to `standardbsfamily` in `centralus` does not affect `eastus`, `westus`, or any other region.
+- Allocation updates are asynchronous request records under `quotaAllocationRequests`. A PATCH can be accepted while the immediate GET still shows the old value.
+- Duplicate submissions during an in-progress request can return `EntityAlreadyExists` with an existing request id.
+
+Request status APIs (same `api-version=2025-09-01`):
+
+```text
+GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscriptions/{subscriptionId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/resourceProviders/Microsoft.Compute/quotaAllocationRequests?api-version=2025-09-01&$filter=location eq {location}
+```
+
+Lists request records for a subscription/location.
+
+```text
+GET /providers/Microsoft.Management/managementGroups/{managementGroupId}/subscriptions/{subscriptionId}/providers/Microsoft.Quota/groupQuotas/{groupQuotaName}/resourceProviders/Microsoft.Compute/quotaAllocationRequests/{allocationId}?api-version=2025-09-01
+```
+
+Gets a specific request status by request id.
+
+Runnable example:
+
+- See `examples/QuotaGroup-AllocationRequest-Example.ps1` for a copy/paste script that submits PATCH, handles `EntityAlreadyExists`, polls request status, and verifies final allocation value.
+
+Validated example:
+
+- Management group: `<management-group-id>`
+- Quota group: `<quota-group-name>`
+- Region: `centralus`
+- Resource family: `standardbsfamily`
+- Verified allocation move pattern: source subscription `100 -> 99`, target subscription `100 -> 101`.
+- Verified return-to-group pattern: source subscription reduced `89 -> 84 -> 79` via portal/API request records.
 
 ### Compatibility Gate
 

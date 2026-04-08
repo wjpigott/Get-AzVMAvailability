@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **QuotaGroup API reference docs** — Expanded README QuotaGroup Planning section with explicit Microsoft.Quota endpoint patterns (`groupQuotas`, `groupQuotas/{name}/subscriptions`, `quotaAllocations/{location}` GET/PATCH), request payload example, and operational notes for throttling/retry and read-after-write validation.
+- **QuotaGroup API reference docs** — Expanded README QuotaGroup Planning section with explicit Microsoft.Quota endpoint patterns (`groupQuotas`, `groupQuotas/{name}/subscriptions`, `quotaAllocations/{location}` GET/PATCH), request payload example, regional-scope notes, and operational guidance for throttling/retry and read-after-write validation.
+- **QuotaGroup request-status API docs and runnable example** — Added README coverage for `quotaAllocationRequests` list/get endpoints and async behavior (`EntityAlreadyExists` duplicate in-progress request handling), plus a runnable script example in `examples/QuotaGroup-AllocationRequest-Example.ps1`.
 
 ### Fixed
 - **Quota-group bearer token compatibility** — `Get-QuotaApiBearerToken` now safely handles `Get-AzAccessToken` responses where `.Token` is a `SecureString`, preventing authorization failures in quota-group discovery/plan/apply on newer Az module builds.

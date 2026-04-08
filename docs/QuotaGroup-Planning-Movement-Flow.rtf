@@ -1,0 +1,174 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Calibri;}}
+\fs24
+\b Quota Group Planning and Movement Flow\b0\par
+\par
+\b Purpose\b0\par
+This guide captures the quota group workflow implemented and validated in this repo:\par
+- identify unused quota capacity\par
+- generate safe movement candidates\par
+- move quota within a quota group\par
+- return unused subscription quota back to group context\par
+- monitor asynchronous request completion\par
+\par
+This document is sanitized for handoff (no tenant-specific IDs, credentials, or user data).\par
+\par
+\b Key Point About Region\b0\par
+Quota allocation updates are region-scoped.\par
+A change in centralus does not change eastus, westus, or any other region.\par
+\par
+\b RegionPreset Definition and Options\b0\par
+Where this is defined:\par
+- Get-AzVMAvailability.ps1 defines RegionPresets in the RegionPresets map.\par
+- Parameter validation list is also defined in Get-AzVMAvailability.ps1.\par
+\par
+Current RegionPreset options:\par
+- USEastWest: eastus, westus2\par
+- USCentral: centralus, southcentralus\par
+- USMajor: eastus, eastus2, centralus, westus, westus2\par
+- Europe: westeurope, northeurope, uksouth, ukwest, francecentral, germanywestcentral\par
+- AsiaPacific: eastasia, southeastasia, japaneast, japanwest, australiaeast, australiasoutheast\par
+- Global: all enabled regions from Get-AzLocation (current cloud)\par
+- USGov: usgovvirginia, usgovtexas, usgovarizona\par
+- China: chinaeast2, chinanorth2\par
+- ASR-EastWest: eastus2, westus2\par
+- ASR-CentralUS: centralus\par
+\par
+Can this be used for US Gov?\par
+- Yes. Use RegionPreset USGov.\par
+- USGov auto-sets AzureUSGovernment when Environment is not explicitly set.\par
+- You still need to authenticate to Azure Government.\par
+\par
+US Gov baseline command example:\par
+Connect-AzAccount -Environment AzureUSGovernment\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USGov -CaptureQuotaHistory -QuotaGroupCandidates\par
+\par
+\b Hourly Baseline Capture\b0\par
+Run:\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates\par
+\par
+\b Discover and Plan\b0\par
+Run discovery:\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupDiscover\par
+\par
+Generate plan:\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId <management-group-id> -QuotaGroupName <quota-group-name>\par
+\par
+\b Apply and Verify\b0\par
+Apply from script plan:\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupManagementGroupId <management-group-id> -QuotaGroupName <quota-group-name>\par
+\par
+Direct API paths:\par
+GET .../quotaAllocations/{location}?api-version=2025-09-01\par
+PATCH .../quotaAllocations/{location}?api-version=2025-09-01\par
+GET .../quotaAllocationRequests?...&$filter=location eq {location}\par
+GET .../quotaAllocationRequests/{allocationId}?api-version=2025-09-01\par
+\par
+\b Async and Error Handling\b0\par
+- Updates can be asynchronous (202 Accepted).\par
+- Poll quotaAllocationRequests until terminal state.\par
+- Handle RequestThrottled with Retry-After.\par
+- Handle EntityAlreadyExists by reusing existing request id and polling.\par
+\par
+\b Scale Guidance for 1000+ Subscriptions\b0\par
+- Measure one real run and compute seconds per subscription.\par
+- Project total runtime for N subscriptions.\par
+- Batch subscriptions (for example 100-250 per run).\par
+- Stagger schedules to reduce throttling.\par
+\par
+\b Suggested Batch Model\b0\par
+1000 subscriptions -> 10 tasks x 100 subscriptions, staggered hourly starts.\par
+\par
+\b Full Example Commands\b0\par
+\par
+\b 1) Hourly baseline capture (history + candidates)\b0\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -OutputFormat CSV -JsonOutput -MaxRetries 4 -Verbose\par
+\par
+\b 2) Discover groups and generate candidate data\b0\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupDiscover -QuotaGroupMinMovable 15 -QuotaGroupSafetyBuffer 12 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 4 -Verbose\par
+\par
+\b 3) Build quota move plan for selected group\b0\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -OutputFormat CSV -JsonOutput -MaxRetries 4 -Verbose\par
+\par
+\b 4) Apply plan rows (automation mode)\b0\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxRows 5 -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose\par
+\par
+\b 5) Large-estate batch mode (explicit subscription list)\b0\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -SubscriptionId "<sub-id-1>","<sub-id-2>","<sub-id-3>" -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 15 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory\Batch01" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates\Batch01" -ExportPath "C:\Temp\AzVMAvailability\Batch01" -JsonOutput -MaxRetries 4 -Verbose\par
+\par
+\b 6) US Gov full example\b0\par
+Connect-AzAccount -Environment AzureUSGovernment\par
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USGov -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<gov-management-group-id>" -QuotaGroupName "<gov-quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistoryGov" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidatesGov" -ExportPath "C:\Temp\AzVMAvailability\Gov" -JsonOutput -MaxRetries 5 -Verbose\par
+\par
+\b 7) Generate and import scheduled tasks\b0\par
+.\tools\New-QuotaPlanningScheduledTasks.ps1 -RepositoryPath "C:\repos\Capacity\Get-AzVMAvailability" -OutputPath "C:\repos\Capacity\Get-AzVMAvailability\artifacts\scheduled-tasks" -TaskPrefix "AzVMAvailability" -RegionPreset "USMajor" -ManagementGroupId "<management-group-id>" -GroupQuotaName "<quota-group-name>" -DailyPlanHour 6\par
+powershell -ExecutionPolicy Bypass -File .\artifacts\scheduled-tasks\Import-QuotaPlanningScheduledTasks.ps1\par
+\par
+\b 8) Direct API allocation request runner with polling\b0\par
+pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 -ManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -SubscriptionId "<subscription-id-guid>" -Region "centralus" -ResourceName "standardbsfamily" -TargetLimit 79 -MaxPollAttempts 30 -PollIntervalSeconds 10\par
+\par
+\b Example Output and Results\b0\par
+\par
+\b Console Output Example\b0\par
+When you execute a quota group planning workflow, output appears like:\par
+- "Using all enabled subscriptions: 2"\par
+- "SCAN COMPLETE Generated: [timestamp] | Total time: 28.1 seconds"\par
+- "EXPORTING... XLSX: C:\\Temp\\QuotaDemo\\AzVMAvailability-20260408-143927.xlsx"\par
+- "Appended quota history snapshot: C:\\Temp\\QuotaDemo\\AzVMAvailability-QuotaHistory-20260408.csv (2166 rows)"\par
+- "Quota-group candidates report: C:\\Temp\\QuotaDemo\\AzVMAvailability-QuotaGroupCandidates-20260408-143914.csv (1318 candidate rows / 1856 total)"\par
+- "Discovered quota groups: 1"\par
+\par
+Output Files Created:\par
+- AzVMAvailability-QuotaHistory-20260408.csv: Captures per-subscription, per-region quota usage snapshots\par
+- AzVMAvailability-QuotaGroupCandidates-20260408-143914.csv: Identifies quota families with surplus across subscriptions\par
+- AzVMAvailability-20260408-143927.xlsx: Interactive Excel report with status dashboard\par
+\par
+\b Quota History CSV Sample\b0\par
+The quota history snapshot captures current quota usage. Key fields:\par
+- CapturedAtUtc/Local: Timestamp of the snapshot\par
+- SubscriptionName: Which subscription's quota\par
+- Region: Azure region (centralus, eastus, etc.)\par
+- QuotaName: Quota family name (standardBsv2Family, cores, etc.)\par
+- CurrentValue: Current usage\par
+- Limit: Quota limit\par
+- Available: Limit minus CurrentValue\par
+\par
+Example row: ME-MngEnvMCAP374870-jeffpigott-1, centralus, standardBsv2Family, 0 current, 200 limit, 200 available\par
+\par
+\b Quota Group Candidates CSV Sample\b0\par
+The candidates report identifies quota families with surplus capacity. Example shows:\par
+- 1856 total candidates across 2 subscriptions\par
+- Top candidates by suggested movable amount: standardBsv2Family (180), standardDSv4Family (180), standardDv2Family (96)\par
+- CandidateStatus field shows "Candidate" when surplus is available\par
+- SuggestedMovable shows recommended amount to return to group quota pool\par
+\par
+\b Quota Group Discovery Results\b0\par
+When -QuotaGroupDiscover is specified with -QuotaGroupManagementGroupId Demo-MG:\par
+- Discovered quota groups: 1\par
+- ManagementGroupId: Demo-MG\par
+- GroupQuotaName: standardbstesting\par
+- DisplayName: Standard BS Testing\par
+- GroupType: AllocationGroup\par
+- ProvisioningState: Succeeded\par
+\par
+\b Interpreting Results\b0\par
+Candidates Report Interpretation:\par
+- High SuggestedMovable values (100+) indicate significant surplus capacity\par
+- Multiple candidates per family across subscriptions show potential for consolidation\par
+- Total candidates count (1856 in example) shows scope for consolidation\par
+\par
+Next Steps After Capture:\par
+1. Review the CSV files to understand current quota distribution\par
+2. Use -QuotaGroupPlan to generate a move plan\par
+3. Apply with -QuotaGroupApply to execute the moves\par
+4. Monitor with -CaptureQuotaHistory in scheduled tasks over time\par
+\par
+\b Flowchart (text)\b0\par
+Hourly capture -> Discover groups -> Select group/region/family -> Read allocation -> Build target -> PATCH update -> Poll request status -> Read-after-write verify -> Record success\par
+\par
+\b Repo Artifacts\b0\par
+- Get-AzVMAvailability.ps1\par
+- tools/New-QuotaPlanningScheduledTasks.ps1\par
+- artifacts/scheduled-tasks/Import-QuotaPlanningScheduledTasks.ps1\par
+- examples/QuotaGroup-AllocationRequest-Example.ps1\par
+}
