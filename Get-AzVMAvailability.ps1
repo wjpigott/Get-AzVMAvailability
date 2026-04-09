@@ -5212,7 +5212,7 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                 $selectedQuotaFilters = @($QuotaGroupQuotaNameFilter | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() })
             }
             elseif (-not $NoPrompt) {
-                $quotaGroups = @($candidateReport.Rows | Group-Object QuotaName | Sort-Object Count -Descending, Name)
+                $quotaGroups = @($candidateReport.Rows | Group-Object QuotaName | Sort-Object @{Expression = 'Count'; Descending = $true }, @{Expression = 'Name'; Descending = $false })
                 if ($quotaGroups.Count -gt 0) {
                     Write-Host "Available quota families in candidate rows:" -ForegroundColor DarkCyan
                     $displayLimit = [math]::Min(40, $quotaGroups.Count)
