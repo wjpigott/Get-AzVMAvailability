@@ -445,7 +445,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-QuotaGroupDiscover`   | Switch   | Discover quota groups across accessible management groups                                                                  |
 | `-QuotaGroupManagementGroupName` | String | Target management group name for quota-group plan/apply (ARM path segment; for example `SharedCapacityDemo`)         |
 | `-QuotaGroupName`       | String   | Target quota group name for quota-group plan/apply                                                                         |
-| `-QuotaGroupQuotaNameFilter` | String[] | Optional quota family/resourceName filter for plan/apply (supports wildcards; for example `standardDSv4Family` or `*dsv4*`) |
+| `-QuotaGroupQuotaNameFilter` | String[] | Optional quota family/resourceName filter for plan/apply (supports wildcards; for example `standardDSv4Family` or `*dsv4*`). In interactive mode, the script can list candidate families and accept numeric selection. |
 | `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
 | `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
 | `-QuotaGroupForceConfirm` | Switch | Skip interactive APPLY prompt; required for non-interactive apply                                                          |

@@ -5212,9 +5212,40 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                 $selectedQuotaFilters = @($QuotaGroupQuotaNameFilter | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() })
             }
             elseif (-not $NoPrompt) {
-                $quotaFilterInput = Read-Host "Optional quota family filter for plan/apply (example: standardDSv4Family or *dsv4*). Press Enter for all"
+                $quotaGroups = @($candidateReport.Rows | Group-Object QuotaName | Sort-Object Count -Descending, Name)
+                if ($quotaGroups.Count -gt 0) {
+                    Write-Host "Available quota families in candidate rows:" -ForegroundColor DarkCyan
+                    $displayLimit = [math]::Min(40, $quotaGroups.Count)
+                    for ($i = 0; $i -lt $displayLimit; $i++) {
+                        $qg = $quotaGroups[$i]
+                        Write-Host "[$($i + 1)] $($qg.Name) (rows=$($qg.Count))" -ForegroundColor Gray
+                    }
+                    if ($quotaGroups.Count -gt $displayLimit) {
+                        Write-Host "...and $($quotaGroups.Count - $displayLimit) more" -ForegroundColor DarkGray
+                    }
+                }
+
+                $quotaFilterInput = Read-Host "Optional quota family filter: enter number(s) like 1,3; or name/wildcard like standardDSv4Family,*dsv4*; Enter for all"
                 if ($quotaFilterInput -and $quotaFilterInput.Trim() -ne '') {
-                    $selectedQuotaFilters = @($quotaFilterInput.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                    $tokens = @($quotaFilterInput.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                    $allNumeric = ($tokens.Count -gt 0)
+                    foreach ($t in $tokens) {
+                        if ($t -notmatch '^\d+$') { $allNumeric = $false; break }
+                    }
+
+                    if ($allNumeric) {
+                        $picked = [System.Collections.Generic.List[string]]::new()
+                        foreach ($t in $tokens) {
+                            $idx = [int]$t
+                            if ($idx -ge 1 -and $idx -le $quotaGroups.Count) {
+                                $picked.Add([string]$quotaGroups[$idx - 1].Name)
+                            }
+                        }
+                        $selectedQuotaFilters = @($picked | Select-Object -Unique)
+                    }
+                    else {
+                        $selectedQuotaFilters = @($tokens)
+                    }
                 }
             }
 
