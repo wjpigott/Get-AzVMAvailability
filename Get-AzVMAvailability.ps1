@@ -5248,7 +5248,9 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                         $patchUri = "$armUrl/providers/Microsoft.Management/managementGroups/$selectedMgmtGroup/subscriptions/$($sample.SubscriptionId)/providers/Microsoft.Quota/groupQuotas/$selectedGroupQuota/resourceProviders/Microsoft.Compute/quotaAllocations/$($sample.Region)?api-version=$quotaApiVersion"
 
                         try {
-                            [void](Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $patchBody)
+                            [void](Invoke-WithRetry -ScriptBlock {
+                                    Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $patchBody
+                                } -MaxRetries $MaxRetries -OperationName "Quota group batch apply ($($sample.SubscriptionId)/$($sample.Region), $(@($g.Group).Count) families)")
                             $submittedChangeCount += @($g.Group).Count
                             $submittedRequestedCores += $requestedCores
                             $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; QuotaName = '*batch*'; RowsSubmitted = @($g.Group).Count; RequestedCores = $requestedCores; Status = 'Submitted'; Error = '' })
@@ -5275,7 +5277,9 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                                 }
 
                                 try {
-                                    [void](Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $singlePatchBody)
+                                    [void](Invoke-WithRetry -ScriptBlock {
+                                            Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $singlePatchBody
+                                        } -MaxRetries $MaxRetries -OperationName "Quota group single apply ($($sample.SubscriptionId)/$($sample.Region)/$([string]$row.QuotaName))")
                                     $submittedChangeCount += 1
                                     $submittedRequestedCores += $singleRequestedCores
                                     $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; QuotaName = [string]$row.QuotaName; RowsSubmitted = 1; RequestedCores = $singleRequestedCores; Status = 'SubmittedSingle'; Error = '' })
