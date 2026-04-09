@@ -355,7 +355,7 @@ powershell -ExecutionPolicy Bypass -File Import-QuotaPlanningScheduledTasks.ps1 
 # Use the runnable example script to directly call the Azure Quota API
 # Useful for integrating quota movements into custom orchestration workflows
 pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
-    -ManagementGroupId "<management-group-name>" `
+    -ManagementGroupName "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -SubscriptionId "<subscription-id-guid>" `
     -Region "centralus" `

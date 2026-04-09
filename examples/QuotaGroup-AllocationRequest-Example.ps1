@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ManagementGroupId,
+    [Alias("ManagementGroupId")]
+    [string]$ManagementGroupName,
 
     [Parameter(Mandatory = $true)]
     [string]$QuotaGroupName,
@@ -91,8 +92,10 @@ $bearer = Get-ArmBearerToken
 $headers = @{ Authorization = "Bearer $bearer" }
 $patchHeaders = @{ Authorization = "Bearer $bearer"; 'Content-Type' = 'application/json' }
 
-$allocationUri = Get-AllocationUri -ManagementGroupId $ManagementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -Region $Region -ApiVersion $apiVersion
-$requestListUri = Get-RequestListUri -ManagementGroupId $ManagementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -Region $Region -ApiVersion $apiVersion
+$managementGroupId = $ManagementGroupName
+
+$allocationUri = Get-AllocationUri -ManagementGroupId $managementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -Region $Region -ApiVersion $apiVersion
+$requestListUri = Get-RequestListUri -ManagementGroupId $managementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -Region $Region -ApiVersion $apiVersion
 
 Write-Host "Allocation URI: $allocationUri" -ForegroundColor DarkGray
 Write-Host "Request List URI: $requestListUri" -ForegroundColor DarkGray
@@ -170,7 +173,7 @@ if (-not $requestId) {
 }
 
 if ($requestId) {
-    $requestUri = Get-RequestUri -ManagementGroupId $ManagementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -RequestId $requestId -ApiVersion $apiVersion
+    $requestUri = Get-RequestUri -ManagementGroupId $managementGroupId -SubscriptionId $SubscriptionId -QuotaGroupName $QuotaGroupName -ResourceProvider $resourceProvider -RequestId $requestId -ApiVersion $apiVersion
     for ($i = 1; $i -le $MaxPollAttempts; $i++) {
         $statusResponse = Invoke-RestMethod -Uri $requestUri -Headers $headers -Method Get -ErrorAction Stop
 
@@ -204,7 +207,7 @@ if ($after.properties.limit -eq $TargetLimit) {
 Example:
 
 pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 \
-    -ManagementGroupId <management-group-name> \
+    -ManagementGroupName <management-group-name> \
     -QuotaGroupName <quota-group-name> \
     -SubscriptionId <subscription-id-guid> \
   -Region centralus \

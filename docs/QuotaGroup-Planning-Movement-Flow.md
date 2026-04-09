@@ -238,7 +238,7 @@ powershell -ExecutionPolicy Bypass -File .\artifacts\scheduled-tasks\Import-Quot
 ### 8) Direct API allocation request runner with polling
 
 ```powershell
-pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 -ManagementGroupId "<management-group-name>" -QuotaGroupName "<quota-group-name>" -SubscriptionId "<subscription-id-guid>" -Region "centralus" -ResourceName "standardbsfamily" -TargetLimit 79 -MaxPollAttempts 30 -PollIntervalSeconds 10
+pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 -ManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>" -SubscriptionId "<subscription-id-guid>" -Region "centralus" -ResourceName "standardbsfamily" -TargetLimit 79 -MaxPollAttempts 30 -PollIntervalSeconds 10
 ```
 
 ## Example Output and Results
