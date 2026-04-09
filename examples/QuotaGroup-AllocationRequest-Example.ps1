@@ -204,7 +204,7 @@ if ($after.properties.limit -eq $TargetLimit) {
 Example:
 
 pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 \
-    -ManagementGroupId <management-group-id> \
+    -ManagementGroupId <management-group-name> \
     -QuotaGroupName <quota-group-name> \
     -SubscriptionId <subscription-id-guid> \
   -Region centralus \

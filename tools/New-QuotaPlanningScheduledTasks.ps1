@@ -30,7 +30,7 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = "Region preset to use for scheduled scans")]
     [string]$RegionPreset = "USMajor",
 
-    [Parameter(Mandatory = $false, HelpMessage = "Target management group id for daily planning")]
+    [Parameter(Mandatory = $false, HelpMessage = "Target management group name for daily planning")]
     [string]$ManagementGroupId = "SharedCapacityDemo",
 
     [Parameter(Mandatory = $false, HelpMessage = "Target quota group name for daily planning")]

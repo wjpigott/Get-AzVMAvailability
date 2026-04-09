@@ -69,7 +69,7 @@
     Discover quota groups across management groups and display selectable targets.
 
 .PARAMETER QuotaGroupManagementGroupId
-    Target management group id for quota-group planning/apply. If omitted, discovery
+    Target management group name for quota-group planning/apply. If omitted, discovery
     searches all accessible management groups.
 
 .PARAMETER QuotaGroupName
@@ -371,7 +371,8 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = "Discover quota groups across accessible management groups")]
     [switch]$QuotaGroupDiscover,
 
-    [Parameter(Mandatory = $false, HelpMessage = "Target management group id for quota-group plan/apply")]
+    [Parameter(Mandatory = $false, HelpMessage = "Target management group name for quota-group plan/apply")]
+    [Alias("QuotaGroupManagementGroupName")]
     [string]$QuotaGroupManagementGroupId,
 
     [Parameter(Mandatory = $false, HelpMessage = "Target quota group name for quota-group plan/apply")]

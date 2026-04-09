@@ -278,11 +278,13 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -NoPrompt `
     -AllSubscriptions `
     -QuotaGroupDiscover `
-    -QuotaGroupManagementGroupId "<management-group-id>"
+    -QuotaGroupManagementGroupId "<management-group-name>"
 
 # Result: Console output shows discovered quota groups with their status, display name, and provisioning state
 # Use the GroupQuotaName from this output in -QuotaGroupName for plan/apply operations
 ```
+
+> **Tip**: Use the management group **name** value (for example `SharedCapacityDemo`), not the display name. You can list names with `Get-AzManagementGroup | Select-Object Name, DisplayName, Id`.
 
 > **⚠️ Important**: The quota group must already exist in Azure before running plan/apply commands. The script does not create quota groups. Create the allocation group in [Azure Portal under Quotas → Group quotas](https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade) first.
 
@@ -296,7 +298,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupCandidates `
     -QuotaGroupDiscover `
     -QuotaGroupPlan `
-    -QuotaGroupManagementGroupId "<management-group-id>" `
+    -QuotaGroupManagementGroupId "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
@@ -320,7 +322,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupPlan `
     -QuotaGroupApply `
     -QuotaGroupForceConfirm `
-    -QuotaGroupManagementGroupId "<management-group-id>" `
+    -QuotaGroupManagementGroupId "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
@@ -353,7 +355,7 @@ powershell -ExecutionPolicy Bypass -File Import-QuotaPlanningScheduledTasks.ps1 
 # Use the runnable example script to directly call the Azure Quota API
 # Useful for integrating quota movements into custom orchestration workflows
 pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
-    -ManagementGroupId "<management-group-id>" `
+    -ManagementGroupId "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -SubscriptionId "<subscription-id-guid>" `
     -Region "centralus" `
@@ -384,7 +386,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-QuotaGroupSafetyBuffer` | Int    | Minimum vCPU reserve to keep per family before suggesting movable quota (default 10)                                     |
 | `-QuotaGroupReportPath` | String   | Directory for quota-group candidate CSV output. Default: `<ExportPath>\\QuotaGroupCandidates` or `C:\Temp\AzVMAvailability\QuotaGroupCandidates` |
 | `-QuotaGroupDiscover`   | Switch   | Discover quota groups across accessible management groups                                                                  |
-| `-QuotaGroupManagementGroupId` | String | Target management group id for quota-group plan/apply (for example `SharedCapacityDemo`)                             |
+| `-QuotaGroupManagementGroupId` | String | Target management group name for quota-group plan/apply (ARM path segment; for example `SharedCapacityDemo`)         |
 | `-QuotaGroupName`       | String   | Target quota group name for quota-group plan/apply                                                                         |
 | `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
 | `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
@@ -457,7 +459,7 @@ QuotaGroup Planning helps you identify unused quota across subscriptions, map it
 - `-QuotaGroupSafetyBuffer` — reserve floor to keep before suggesting movement
 - `-QuotaGroupReportPath` — output path for candidate/plan/apply reports
 - `-QuotaGroupDiscover` — discover groups across accessible management groups
-- `-QuotaGroupManagementGroupId` — target management group (for example `SharedCapacityDemo`)
+- `-QuotaGroupManagementGroupId` — target management group name (for example `SharedCapacityDemo`)
 - `-QuotaGroupName` — target quota group name
 - `-QuotaGroupPlan` — generate move plan against selected quota group
 - `-QuotaGroupApply` — submit allocation PATCH requests for `ReadyToApply` rows
@@ -633,7 +635,7 @@ Runnable example:
 
 Validated example:
 
-- Management group: `<management-group-id>`
+- Management group: `<management-group-name>`
 - Quota group: `<quota-group-name>`
 - Region: `centralus`
 - Resource family: `standardbsfamily`

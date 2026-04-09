@@ -25,9 +25,9 @@ The script **does not create quota groups**. You must create the allocation grou
 - Select **Group quotas** or **Shared capacity**
 - Click **Create quota group**
 - Assign subscriptions to the group
-- Confirm the group name and management group ID
+- Confirm the group name and management group name
 
-Once the quota group exists, use its name with `-QuotaGroupName` and its management group ID with `-QuotaGroupManagementGroupId` in plan/apply commands.
+Once the quota group exists, use its name with `-QuotaGroupName` and its management group name with `-QuotaGroupManagementGroupId` in plan/apply commands.
 
 ### Required Permissions
 - **Quota API permissions**: `Microsoft.Quota/groupQuotas/read`, `Microsoft.Quota/groupQuotas/subscriptions/read`, `Microsoft.Quota/groupQuotas/subscriptions/quotaAllocations/patch`
@@ -90,7 +90,7 @@ Generate plan for a selected group:
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
   -QuotaGroupCandidates -QuotaGroupPlan `
-  -QuotaGroupManagementGroupId <management-group-id> -QuotaGroupName <quota-group-name>
+  -QuotaGroupManagementGroupId <management-group-name> -QuotaGroupName <quota-group-name>
 ```
 
 ### 3. Apply movement (script path)
@@ -99,7 +99,7 @@ Apply plan rows marked ReadyToApply:
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
   -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
-  -QuotaGroupManagementGroupId <management-group-id> -QuotaGroupName <quota-group-name>
+  -QuotaGroupManagementGroupId <management-group-name> -QuotaGroupName <quota-group-name>
 ```
 
 ### 4. Apply movement (direct API path)
@@ -205,32 +205,32 @@ $$
 ### 3) Build quota move plan for selected group
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -OutputFormat CSV -JsonOutput -MaxRetries 4 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -OutputFormat CSV -JsonOutput -MaxRetries 4 -Verbose
 ```
 
 ### 4) Apply plan rows (automation mode)
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxRows 5 -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxRows 5 -QuotaGroupManagementGroupId "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose
 ```
 
 ### 5) Large-estate batch mode (explicit subscription list)
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -SubscriptionId "<sub-id-1>","<sub-id-2>","<sub-id-3>" -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 15 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory\Batch01" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates\Batch01" -ExportPath "C:\Temp\AzVMAvailability\Batch01" -JsonOutput -MaxRetries 4 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -SubscriptionId "<sub-id-1>","<sub-id-2>","<sub-id-3>" -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 15 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory\Batch01" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates\Batch01" -ExportPath "C:\Temp\AzVMAvailability\Batch01" -JsonOutput -MaxRetries 4 -Verbose
 ```
 
 ### 6) US Gov full example
 
 ```powershell
 Connect-AzAccount -Environment AzureUSGovernment
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USGov -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<gov-management-group-id>" -QuotaGroupName "<gov-quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistoryGov" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidatesGov" -ExportPath "C:\Temp\AzVMAvailability\Gov" -JsonOutput -MaxRetries 5 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USGov -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId "<gov-management-group-name>" -QuotaGroupName "<gov-quota-group-name>" -QuotaGroupMinMovable 20 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistoryGov" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidatesGov" -ExportPath "C:\Temp\AzVMAvailability\Gov" -JsonOutput -MaxRetries 5 -Verbose
 ```
 
 ### 7) Generate and import scheduled tasks
 
 ```powershell
-.\tools\New-QuotaPlanningScheduledTasks.ps1 -RepositoryPath "C:\repos\Capacity\Get-AzVMAvailability" -OutputPath "C:\repos\Capacity\Get-AzVMAvailability\artifacts\scheduled-tasks" -TaskPrefix "AzVMAvailability" -RegionPreset "USMajor" -ManagementGroupId "<management-group-id>" -GroupQuotaName "<quota-group-name>" -DailyPlanHour 6
+.\tools\New-QuotaPlanningScheduledTasks.ps1 -RepositoryPath "C:\repos\Capacity\Get-AzVMAvailability" -OutputPath "C:\repos\Capacity\Get-AzVMAvailability\artifacts\scheduled-tasks" -TaskPrefix "AzVMAvailability" -RegionPreset "USMajor" -ManagementGroupId "<management-group-name>" -GroupQuotaName "<quota-group-name>" -DailyPlanHour 6
 
 powershell -ExecutionPolicy Bypass -File .\artifacts\scheduled-tasks\Import-QuotaPlanningScheduledTasks.ps1
 ```
@@ -238,7 +238,7 @@ powershell -ExecutionPolicy Bypass -File .\artifacts\scheduled-tasks\Import-Quot
 ### 8) Direct API allocation request runner with polling
 
 ```powershell
-pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 -ManagementGroupId "<management-group-id>" -QuotaGroupName "<quota-group-name>" -SubscriptionId "<subscription-id-guid>" -Region "centralus" -ResourceName "standardbsfamily" -TargetLimit 79 -MaxPollAttempts 30 -PollIntervalSeconds 10
+pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 -ManagementGroupId "<management-group-name>" -QuotaGroupName "<quota-group-name>" -SubscriptionId "<subscription-id-guid>" -Region "centralus" -ResourceName "standardbsfamily" -TargetLimit 79 -MaxPollAttempts 30 -PollIntervalSeconds 10
 ```
 
 ## Example Output and Results
