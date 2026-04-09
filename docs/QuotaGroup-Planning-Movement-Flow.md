@@ -211,7 +211,7 @@ $$
 ### 4) Apply plan rows (automation mode)
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxRows 5 -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxChanges 5 -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose
 ```
 
 ### 5) Large-estate batch mode (explicit subscription list)

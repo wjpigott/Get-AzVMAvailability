@@ -85,8 +85,8 @@
 .PARAMETER QuotaGroupForceConfirm
     Skip interactive APPLY confirmation prompt for non-interactive automation.
 
-.PARAMETER QuotaGroupApplyMaxRows
-    Safety cap for number of plan rows to apply in a single run. Default 100.
+.PARAMETER QuotaGroupApplyMaxChanges
+    Safety cap for number of quota-family plan entries to apply in a single run. Default 100.
 
 .PARAMETER EnableDrillDown
     Enable interactive drill-down to select specific families and SKUs.
@@ -387,9 +387,10 @@ param(
     [Parameter(Mandatory = $false, HelpMessage = "Skip interactive confirmation for quota-group apply")]
     [switch]$QuotaGroupForceConfirm,
 
-    [Parameter(Mandatory = $false, HelpMessage = "Safety cap: max plan rows to apply in one run")]
+    [Parameter(Mandatory = $false, HelpMessage = "Safety cap: max quota-family plan entries to apply in one run")]
+    [Alias("QuotaGroupApplyMaxRows")]
     [ValidateRange(1, 10000)]
-    [int]$QuotaGroupApplyMaxRows = 100,
+    [int]$QuotaGroupApplyMaxChanges = 100,
 
     [Parameter(Mandatory = $false, HelpMessage = "Enable interactive family/SKU drill-down")]
     [switch]$EnableDrillDown,
@@ -5213,7 +5214,7 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                     Write-Warning "No plan rows are ReadyToApply. Skipping apply."
                 }
                 else {
-                    $rowsToApply = @($readyRows | Select-Object -First $QuotaGroupApplyMaxRows)
+                    $rowsToApply = @($readyRows | Select-Object -First $QuotaGroupApplyMaxChanges)
                     if (-not $QuotaGroupForceConfirm) {
                         Write-Host "About to apply quota allocation changes for $($rowsToApply.Count) row(s) to group '$selectedGroupQuota' in management group '$selectedMgmtGroup'." -ForegroundColor Yellow
                         $confirm = Read-Host "Type APPLY to continue"

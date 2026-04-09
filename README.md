@@ -326,7 +326,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
-    -QuotaGroupApplyMaxRows 5 `
+    -QuotaGroupApplyMaxChanges 5 `
     -QuotaHistoryPath "C:\QuotaPlanning\History" `
     -QuotaGroupReportPath "C:\QuotaPlanning\Plans" `
     -ExportPath "C:\QuotaPlanning\Reports"
@@ -391,7 +391,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
 | `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
 | `-QuotaGroupForceConfirm` | Switch | Skip interactive APPLY prompt; required for non-interactive apply                                                          |
-| `-QuotaGroupApplyMaxRows` | Int    | Safety cap for apply mode (max rows submitted in one run, default 100)                                                   |
+| `-QuotaGroupApplyMaxChanges` | Int    | Safety cap for apply mode (max quota-family plan entries submitted in one run, default 100)                              |
 | `-EnableDrillDown`      | Switch   | Interactive family/SKU exploration                                                                                        |
 | `-FamilyFilter`         | String[] | Filter to specific VM families                                                                                            |
 | `-SkuFilter`            | String[] | Filter to specific SKUs (supports wildcards)                                                                              |
@@ -426,7 +426,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-SubMap`               | Switch   | Include a Subscription Map sheet in lifecycle XLSX exports, grouping affected VMs by subscription with risk-level enrichment |
 | `-RGMap`                | Switch   | Include a Resource Group Map sheet in lifecycle XLSX exports, grouping affected VMs by subscription + resource group with risk-level enrichment |
 
-> **Backward compatibility:** The previous parameter names `-Fleet`, `-FleetFile`, and `-GenerateFleetTemplate` still work as aliases. `-QuotaGroupManagementGroupId` also remains supported as an alias for `-QuotaGroupManagementGroupName`.
+> **Backward compatibility:** The previous parameter names `-Fleet`, `-FleetFile`, and `-GenerateFleetTemplate` still work as aliases. `-QuotaGroupManagementGroupId` also remains supported as an alias for `-QuotaGroupManagementGroupName`, and `-QuotaGroupApplyMaxRows` remains supported as an alias for `-QuotaGroupApplyMaxChanges`.
 
 > **Tuning tip:** Use `-MinScore 0` to see all candidates when capacity is tight, or raise it (e.g., 70) to prioritize closer matches.
 
@@ -464,14 +464,14 @@ QuotaGroup Planning helps you identify unused quota across subscriptions, map it
 - `-QuotaGroupPlan` — generate move plan against selected quota group
 - `-QuotaGroupApply` — submit allocation PATCH requests for `ReadyToApply` rows
 - `-QuotaGroupForceConfirm` — bypass interactive APPLY prompt (automation only)
-- `-QuotaGroupApplyMaxRows` — safety cap on rows applied in one run
+- `-QuotaGroupApplyMaxChanges` — safety cap on quota-family entries applied in one run
 
 ### Safety Model
 
 - `-QuotaGroupApply` never runs silently.
 - In interactive mode, apply requires typing `APPLY`.
 - In non-interactive mode (`-NoPrompt`), apply requires `-QuotaGroupForceConfirm`.
-- Apply is capped by `-QuotaGroupApplyMaxRows` to prevent large accidental changes.
+- Apply is capped by `-QuotaGroupApplyMaxChanges` to prevent large accidental changes.
 - Planning exports auditable CSV artifacts before any write action.
 
 ### Reports Produced
@@ -517,7 +517,7 @@ Apply in automation (explicit force + cap):
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
     -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
-    -QuotaGroupApplyMaxRows 25 `
+    -QuotaGroupApplyMaxChanges 25 `
     -QuotaGroupManagementGroupName "SharedCapacityDemo" -QuotaGroupName "groupquota1"
 ```
 
