@@ -5224,9 +5224,12 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                     }
 
                     $applyResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    $submittedChangeCount = 0
+                    $submittedRequestedCores = [double]0
                     $grouped = $rowsToApply | Group-Object SubscriptionId, Region
                     foreach ($g in $grouped) {
                         $sample = $g.Group[0]
+                        $requestedCores = [double](@($g.Group | Measure-Object -Property SuggestedMovable -Sum).Sum)
                         $patchBody = @{
                             properties = @{
                                 value = @(
@@ -5246,10 +5249,12 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
 
                         try {
                             [void](Invoke-QuotaApiRequest -Method PATCH -Uri $patchUri -BearerToken $quotaBearerToken -Body $patchBody)
-                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; Status = 'Submitted'; Error = '' })
+                            $submittedChangeCount += @($g.Group).Count
+                            $submittedRequestedCores += $requestedCores
+                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; RequestedCores = $requestedCores; Status = 'Submitted'; Error = '' })
                         }
                         catch {
-                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; Status = 'Failed'; Error = $_.Exception.Message })
+                            $applyResults.Add([pscustomobject]@{ SubscriptionId = $sample.SubscriptionId; Region = $sample.Region; RowsSubmitted = @($g.Group).Count; RequestedCores = $requestedCores; Status = 'Failed'; Error = $_.Exception.Message })
                         }
                     }
 
@@ -5257,6 +5262,18 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                     $applyFile = Join-Path $QuotaGroupReportPath "AzVMAvailability-QuotaGroupApply-$timestamp.csv"
                     $applyResults | Export-Csv -Path $applyFile -NoTypeInformation -Encoding UTF8
                     Write-Host "Quota-group apply report: $applyFile" -ForegroundColor Green
+
+                    $failureCount = @($applyResults | Where-Object { $_.Status -eq 'Failed' }).Count
+                    if ($submittedChangeCount -gt 0) {
+                        Write-Host ("Quota-group apply summary: submitted {0} change(s), requested move of {1} core(s) to group '{2}'." -f $submittedChangeCount, ([int64][math]::Round($submittedRequestedCores, 0)), $selectedGroupQuota) -ForegroundColor Green
+                    }
+                    else {
+                        Write-Warning ("Quota-group apply summary: no quota changes were submitted for group '{0}'." -f $selectedGroupQuota)
+                    }
+
+                    if ($failureCount -gt 0) {
+                        Write-Warning ("Quota-group apply summary: {0} submission batch(es) failed. See apply report for details." -f $failureCount)
+                    }
                 }
             }
         }
