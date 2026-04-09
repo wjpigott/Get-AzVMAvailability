@@ -75,6 +75,10 @@
 .PARAMETER QuotaGroupName
     Target quota group name for planning/apply.
 
+.PARAMETER QuotaGroupQuotaNameFilter
+    Optional quota family/resourceName filter for quota-group plan/apply (supports wildcards).
+    Example: standardDSv4Family or *dsv4*
+
 .PARAMETER QuotaGroupPlan
     Generate a quota move/change plan against a selected quota group using candidate rows.
 
@@ -377,6 +381,9 @@ param(
 
     [Parameter(Mandatory = $false, HelpMessage = "Target quota group name for quota-group plan/apply")]
     [string]$QuotaGroupName,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Optional quota family/resourceName filter for quota-group plan/apply (supports wildcards)")]
+    [string[]]$QuotaGroupQuotaNameFilter,
 
     [Parameter(Mandatory = $false, HelpMessage = "Generate quota-group move plan using candidate rows")]
     [switch]$QuotaGroupPlan,
@@ -5200,8 +5207,39 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                 throw "No quota-group candidate rows available to build a move plan."
             }
 
+            $selectedQuotaFilters = @()
+            if ($QuotaGroupQuotaNameFilter -and @($QuotaGroupQuotaNameFilter).Count -gt 0) {
+                $selectedQuotaFilters = @($QuotaGroupQuotaNameFilter | Where-Object { $_ -and $_.Trim() -ne '' } | ForEach-Object { $_.Trim() })
+            }
+            elseif (-not $NoPrompt) {
+                $quotaFilterInput = Read-Host "Optional quota family filter for plan/apply (example: standardDSv4Family or *dsv4*). Press Enter for all"
+                if ($quotaFilterInput -and $quotaFilterInput.Trim() -ne '') {
+                    $selectedQuotaFilters = @($quotaFilterInput.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                }
+            }
+
+            $planCandidateRows = @($candidateReport.Rows)
+            if ($selectedQuotaFilters.Count -gt 0) {
+                $planCandidateRows = @(
+                    $planCandidateRows | Where-Object {
+                        $qn = [string]$_.QuotaName
+                        $matched = $false
+                        foreach ($pattern in $selectedQuotaFilters) {
+                            if ($qn -like $pattern) { $matched = $true; break }
+                        }
+                        $matched
+                    }
+                )
+
+                if ($planCandidateRows.Count -eq 0) {
+                    throw "No quota-group candidate rows matched -QuotaGroupQuotaNameFilter: $($selectedQuotaFilters -join ', ')"
+                }
+
+                Write-Host "Quota-group plan/apply filter active: $($selectedQuotaFilters -join ', ') ($($planCandidateRows.Count) candidate row(s) matched)" -ForegroundColor Cyan
+            }
+
             $groupSubs = @(Get-QuotaGroupSubscriptionIds -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken -ManagementGroupId $selectedMgmtGroup -GroupQuotaName $selectedGroupQuota)
-            $movePlan = Write-QuotaGroupMovePlanReport -CandidateRows $candidateReport.Rows -ReportPath $QuotaGroupReportPath -ManagementGroupId $selectedMgmtGroup -GroupQuotaName $selectedGroupQuota -GroupSubscriptionIds $groupSubs -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken
+            $movePlan = Write-QuotaGroupMovePlanReport -CandidateRows $planCandidateRows -ReportPath $QuotaGroupReportPath -ManagementGroupId $selectedMgmtGroup -GroupQuotaName $selectedGroupQuota -GroupSubscriptionIds $groupSubs -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken
 
             Write-Host "Quota-group move plan: $($movePlan.Path) ($($movePlan.ReadyCount) ready rows / $($movePlan.RowCount) total)" -ForegroundColor Green
             if (-not $JsonOutput) {

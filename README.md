@@ -445,6 +445,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-QuotaGroupDiscover`   | Switch   | Discover quota groups across accessible management groups                                                                  |
 | `-QuotaGroupManagementGroupName` | String | Target management group name for quota-group plan/apply (ARM path segment; for example `SharedCapacityDemo`)         |
 | `-QuotaGroupName`       | String   | Target quota group name for quota-group plan/apply                                                                         |
+| `-QuotaGroupQuotaNameFilter` | String[] | Optional quota family/resourceName filter for plan/apply (supports wildcards; for example `standardDSv4Family` or `*dsv4*`) |
 | `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
 | `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
 | `-QuotaGroupForceConfirm` | Switch | Skip interactive APPLY prompt; required for non-interactive apply                                                          |
@@ -518,6 +519,7 @@ QuotaGroup Planning helps you identify unused quota across subscriptions, map it
 - `-QuotaGroupDiscover` — discover groups across accessible management groups
 - `-QuotaGroupManagementGroupName` — target management group name (for example `SharedCapacityDemo`)
 - `-QuotaGroupName` — target quota group name
+- `-QuotaGroupQuotaNameFilter` — optional quota family filter (for example `standardDSv4Family`)
 - `-QuotaGroupPlan` — generate move plan against selected quota group
 - `-QuotaGroupApply` — submit allocation PATCH requests for `ReadyToApply` rows
 - `-QuotaGroupForceConfirm` — bypass interactive APPLY prompt (automation only)
@@ -576,6 +578,16 @@ Apply in automation (explicit force + cap):
     -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
     -QuotaGroupApplyMaxChanges 25 `
     -QuotaGroupManagementGroupName "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+```
+
+Apply only DSv4-family rows (example filter):
+
+```powershell
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -Region "centralus" `
+    -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
+    -QuotaGroupManagementGroupName "Demo-MG" -QuotaGroupName "standardBStesting" `
+    -QuotaGroupQuotaNameFilter "standardDSv4Family" `
+    -QuotaGroupApplyMaxChanges 1 -MaxRetries 10
 ```
 
 ### Ready-to-Import Scheduled Tasks
