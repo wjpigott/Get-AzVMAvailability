@@ -278,7 +278,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -NoPrompt `
     -AllSubscriptions `
     -QuotaGroupDiscover `
-    -QuotaGroupManagementGroupId "<management-group-name>"
+    -QuotaGroupManagementGroupName "<management-group-name>"
 
 # Result: Console output shows discovered quota groups with their status, display name, and provisioning state
 # Use the GroupQuotaName from this output in -QuotaGroupName for plan/apply operations
@@ -298,7 +298,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupCandidates `
     -QuotaGroupDiscover `
     -QuotaGroupPlan `
-    -QuotaGroupManagementGroupId "<management-group-name>" `
+    -QuotaGroupManagementGroupName "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
@@ -322,7 +322,7 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupPlan `
     -QuotaGroupApply `
     -QuotaGroupForceConfirm `
-    -QuotaGroupManagementGroupId "<management-group-name>" `
+    -QuotaGroupManagementGroupName "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
@@ -386,7 +386,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-QuotaGroupSafetyBuffer` | Int    | Minimum vCPU reserve to keep per family before suggesting movable quota (default 10)                                     |
 | `-QuotaGroupReportPath` | String   | Directory for quota-group candidate CSV output. Default: `<ExportPath>\\QuotaGroupCandidates` or `C:\Temp\AzVMAvailability\QuotaGroupCandidates` |
 | `-QuotaGroupDiscover`   | Switch   | Discover quota groups across accessible management groups                                                                  |
-| `-QuotaGroupManagementGroupId` | String | Target management group name for quota-group plan/apply (ARM path segment; for example `SharedCapacityDemo`)         |
+| `-QuotaGroupManagementGroupName` | String | Target management group name for quota-group plan/apply (ARM path segment; for example `SharedCapacityDemo`)         |
 | `-QuotaGroupName`       | String   | Target quota group name for quota-group plan/apply                                                                         |
 | `-QuotaGroupPlan`       | Switch   | Generate a quota move/change plan against the selected quota group                                                         |
 | `-QuotaGroupApply`      | Switch   | Apply plan rows marked ReadyToApply via quota allocation PATCH requests (confirmation-gated)                              |
@@ -426,7 +426,7 @@ pwsh .\examples\QuotaGroup-AllocationRequest-Example.ps1 `
 | `-SubMap`               | Switch   | Include a Subscription Map sheet in lifecycle XLSX exports, grouping affected VMs by subscription with risk-level enrichment |
 | `-RGMap`                | Switch   | Include a Resource Group Map sheet in lifecycle XLSX exports, grouping affected VMs by subscription + resource group with risk-level enrichment |
 
-> **Backward compatibility:** The previous parameter names `-Fleet`, `-FleetFile`, and `-GenerateFleetTemplate` still work as aliases.
+> **Backward compatibility:** The previous parameter names `-Fleet`, `-FleetFile`, and `-GenerateFleetTemplate` still work as aliases. `-QuotaGroupManagementGroupId` also remains supported as an alias for `-QuotaGroupManagementGroupName`.
 
 > **Tuning tip:** Use `-MinScore 0` to see all candidates when capacity is tight, or raise it (e.g., 70) to prioritize closer matches.
 
@@ -445,7 +445,7 @@ QuotaGroup Planning helps you identify unused quota across subscriptions, map it
 1. **Collect history snapshots** (optional but recommended)
 2. **Generate quota-group candidates** from current + historical headroom
 3. **Discover quota groups** across accessible management groups
-4. **Select target group** (`-QuotaGroupManagementGroupId` + `-QuotaGroupName`)
+4. **Select target group** (`-QuotaGroupManagementGroupName` + `-QuotaGroupName`)
 5. **Build move plan** with `ReadyToApply` vs blocked rows
 6. **Apply plan** only after explicit confirmation
 
@@ -459,7 +459,7 @@ QuotaGroup Planning helps you identify unused quota across subscriptions, map it
 - `-QuotaGroupSafetyBuffer` — reserve floor to keep before suggesting movement
 - `-QuotaGroupReportPath` — output path for candidate/plan/apply reports
 - `-QuotaGroupDiscover` — discover groups across accessible management groups
-- `-QuotaGroupManagementGroupId` — target management group name (for example `SharedCapacityDemo`)
+- `-QuotaGroupManagementGroupName` — target management group name (for example `SharedCapacityDemo`)
 - `-QuotaGroupName` — target quota group name
 - `-QuotaGroupPlan` — generate move plan against selected quota group
 - `-QuotaGroupApply` — submit allocation PATCH requests for `ReadyToApply` rows
@@ -501,7 +501,7 @@ Create a move plan against a specific target group:
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
     -QuotaGroupCandidates -QuotaGroupPlan `
-    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+    -QuotaGroupManagementGroupName "SharedCapacityDemo" -QuotaGroupName "groupquota1"
 ```
 
 Apply (interactive confirmation required):
@@ -509,7 +509,7 @@ Apply (interactive confirmation required):
 ```powershell
 .\Get-AzVMAvailability.ps1 -AllSubscriptions -RegionPreset USMajor `
     -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply `
-    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+    -QuotaGroupManagementGroupName "SharedCapacityDemo" -QuotaGroupName "groupquota1"
 ```
 
 Apply in automation (explicit force + cap):
@@ -518,7 +518,7 @@ Apply in automation (explicit force + cap):
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
     -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
     -QuotaGroupApplyMaxRows 25 `
-    -QuotaGroupManagementGroupId "SharedCapacityDemo" -QuotaGroupName "groupquota1"
+    -QuotaGroupManagementGroupName "SharedCapacityDemo" -QuotaGroupName "groupquota1"
 ```
 
 ### Ready-to-Import Scheduled Tasks

@@ -138,7 +138,7 @@ $repoPathResolved = (Resolve-Path -LiteralPath $RepositoryPath).Path
 $mainScriptResolved = (Resolve-Path -LiteralPath $mainScript).Path
 
 $hourlyArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$mainScriptResolved`" -NoPrompt -AllSubscriptions -RegionPreset `"$RegionPreset`" -CaptureQuotaHistory -QuotaGroupCandidates"
-$dailyPlanArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$mainScriptResolved`" -NoPrompt -AllSubscriptions -RegionPreset `"$RegionPreset`" -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupDiscover -QuotaGroupManagementGroupId `"$ManagementGroupId`" -QuotaGroupName `"$GroupQuotaName`""
+$dailyPlanArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$mainScriptResolved`" -NoPrompt -AllSubscriptions -RegionPreset `"$RegionPreset`" -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupDiscover -QuotaGroupManagementGroupName `"$ManagementGroupId`" -QuotaGroupName `"$GroupQuotaName`""
 
 $hourlyStart = Get-IsoBoundaryFromNow -OffsetMinutes 2
 $dailyStart = (Get-Date).Date.AddHours($DailyPlanHour)

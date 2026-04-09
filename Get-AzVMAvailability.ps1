@@ -68,7 +68,7 @@
 .PARAMETER QuotaGroupDiscover
     Discover quota groups across management groups and display selectable targets.
 
-.PARAMETER QuotaGroupManagementGroupId
+.PARAMETER QuotaGroupManagementGroupName
     Target management group name for quota-group planning/apply. If omitted, discovery
     searches all accessible management groups.
 
@@ -251,7 +251,7 @@
     Scans all enabled subscriptions and generates a cross-subscription quota-group candidate report.
 
 .EXAMPLE
-    .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupId SharedCapacityDemo -QuotaGroupName groupquota1
+    .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupName SharedCapacityDemo -QuotaGroupName groupquota1
     Generates a quota-group move plan against an existing quota group.
 
 .EXAMPLE
@@ -372,8 +372,8 @@ param(
     [switch]$QuotaGroupDiscover,
 
     [Parameter(Mandatory = $false, HelpMessage = "Target management group name for quota-group plan/apply")]
-    [Alias("QuotaGroupManagementGroupName")]
-    [string]$QuotaGroupManagementGroupId,
+    [Alias("QuotaGroupManagementGroupId")]
+    [string]$QuotaGroupManagementGroupName,
 
     [Parameter(Mandatory = $false, HelpMessage = "Target quota group name for quota-group plan/apply")]
     [string]$QuotaGroupName,
@@ -5149,7 +5149,7 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
         $armUrl = $script:AzureEndpoints.ResourceManagerUrl.TrimEnd('/')
         $quotaBearerToken = Get-QuotaApiBearerToken -ArmUrl $armUrl
 
-        $catalog = @(Get-QuotaGroupCatalog -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken -ManagementGroupId $QuotaGroupManagementGroupId)
+        $catalog = @(Get-QuotaGroupCatalog -ArmUrl $armUrl -ApiVersion $quotaApiVersion -BearerToken $quotaBearerToken -ManagementGroupId $QuotaGroupManagementGroupName)
 
         if ($catalog.Count -eq 0) {
             Write-Warning "No quota groups discovered in accessible management groups."
@@ -5161,7 +5161,7 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
             }
         }
 
-        $selectedMgmtGroup = $QuotaGroupManagementGroupId
+        $selectedMgmtGroup = $QuotaGroupManagementGroupName
         $selectedGroupQuota = $QuotaGroupName
 
         if (($QuotaGroupPlan -or $QuotaGroupApply) -and (-not $selectedMgmtGroup -or -not $selectedGroupQuota)) {
@@ -5183,13 +5183,13 @@ if ($QuotaGroupDiscover -or $QuotaGroupPlan -or $QuotaGroupApply) {
                 }
             }
             else {
-                throw "Quota group target is ambiguous. Specify -QuotaGroupManagementGroupId and -QuotaGroupName (or run interactive selection)."
+                throw "Quota group target is ambiguous. Specify -QuotaGroupManagementGroupName and -QuotaGroupName (or run interactive selection)."
             }
         }
 
         if ($QuotaGroupPlan -or $QuotaGroupApply) {
             if (-not $selectedMgmtGroup -or -not $selectedGroupQuota) {
-                throw "Quota group target not resolved. Provide -QuotaGroupManagementGroupId and -QuotaGroupName."
+                throw "Quota group target not resolved. Provide -QuotaGroupManagementGroupName and -QuotaGroupName."
             }
 
             if (-not $candidateReport) {
