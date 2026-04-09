@@ -78,6 +78,12 @@ Use this command to capture quota history and candidate movement data across sub
 ```
 
 ### 2. Discover and plan
+Required for discover:
+- `-QuotaGroupDiscover`
+
+Optional for discover:
+- `-QuotaGroupManagementGroupName` (limit to a specific management group)
+
 Discover available quota groups and generate movement plan candidates:
 
 ```powershell
@@ -85,20 +91,47 @@ Discover available quota groups and generate movement plan candidates:
   -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupDiscover
 ```
 
-Generate plan for a selected group:
+Required for plan:
+- `-QuotaGroupPlan`
+- `-QuotaGroupManagementGroupName`
+- `-QuotaGroupName`
+- Scope input: `-AllSubscriptions` or `-SubscriptionId`
+- Region input: `-RegionPreset` or `-Region`
+
+Optional for plan:
+- `-QuotaGroupCandidates`
+- `-QuotaGroupMinMovable`, `-QuotaGroupSafetyBuffer`
+- `-QuotaGroupReportPath`, `-ExportPath`
+
+Generate plan for a selected group (minimal):
 
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
-  -QuotaGroupCandidates -QuotaGroupPlan `
+  -QuotaGroupPlan `
   -QuotaGroupManagementGroupName <management-group-name> -QuotaGroupName <quota-group-name>
 ```
 
 ### 3. Apply movement (script path)
+Required for apply:
+- `-QuotaGroupApply`
+- `-QuotaGroupPlan`
+- `-QuotaGroupManagementGroupName`
+- `-QuotaGroupName`
+- Scope input: `-AllSubscriptions` or `-SubscriptionId`
+- Region input: `-RegionPreset` or `-Region`
+- In non-interactive mode: `-QuotaGroupForceConfirm`
+
+Optional for apply:
+- `-QuotaGroupApplyMaxChanges`
+- `-QuotaGroupCandidates`
+- `-QuotaGroupMinMovable`, `-QuotaGroupSafetyBuffer`
+- `-QuotaGroupReportPath`, `-ExportPath`
+
 Apply plan rows marked ReadyToApply:
 
 ```powershell
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor `
-  -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
+  -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm `
   -QuotaGroupManagementGroupName <management-group-name> -QuotaGroupName <quota-group-name>
 ```
 
@@ -188,7 +221,7 @@ $$
 - Run every hour with staggered starts (for example every 6 minutes)
 - Aggregate history CSV outputs into one reporting layer
 
-## Full Example Commands
+## Compact Example Commands
 
 ### 1) Hourly baseline capture (history + candidates)
 
@@ -202,16 +235,16 @@ $$
 .\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -CaptureQuotaHistory -QuotaGroupCandidates -QuotaGroupDiscover -QuotaGroupMinMovable 15 -QuotaGroupSafetyBuffer 12 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 4 -Verbose
 ```
 
-### 3) Build quota move plan for selected group
+### 3) Build quota move plan for selected group (minimal)
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -OutputFormat CSV -JsonOutput -MaxRetries 4 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupPlan -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>"
 ```
 
-### 4) Apply plan rows (automation mode)
+### 4) Apply plan rows (automation mode, minimal)
 
 ```powershell
-.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupCandidates -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxChanges 5 -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>" -QuotaGroupMinMovable 10 -QuotaGroupSafetyBuffer 10 -QuotaHistoryPath "C:\Temp\AzVMAvailability\QuotaHistory" -QuotaGroupReportPath "C:\Temp\AzVMAvailability\QuotaGroupCandidates" -ExportPath "C:\Temp\AzVMAvailability" -JsonOutput -MaxRetries 5 -Verbose
+.\Get-AzVMAvailability.ps1 -NoPrompt -AllSubscriptions -RegionPreset USMajor -QuotaGroupPlan -QuotaGroupApply -QuotaGroupForceConfirm -QuotaGroupApplyMaxChanges 5 -QuotaGroupManagementGroupName "<management-group-name>" -QuotaGroupName "<quota-group-name>"
 ```
 
 ### 5) Large-estate batch mode (explicit subscription list)

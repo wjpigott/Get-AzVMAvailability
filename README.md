@@ -272,11 +272,22 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 ```
 
 ### Quota Group: Discover Quota Groups
+Required:
+- `-QuotaGroupDiscover`
+
+Optional:
+- `-QuotaGroupManagementGroupName` (filter discovery to one management group)
+- `-AllSubscriptions` (broadens subscription-context scanning for the run)
+
 ```powershell
-# List available quota groups in your tenant/management group
+# Minimal: discover all accessible quota groups
 .\Get-AzVMAvailability.ps1 `
     -NoPrompt `
-    -AllSubscriptions `
+    -QuotaGroupDiscover
+
+# Optional filter: discover only inside one management group
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
     -QuotaGroupDiscover `
     -QuotaGroupManagementGroupName "<management-group-name>"
 
@@ -289,20 +300,40 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 > **⚠️ Important**: The quota group must already exist in Azure before running plan/apply commands. The script does not create quota groups. Create the allocation group in [Azure Portal under Quotas → Group quotas](https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade) first.
 
 ### Quota Group: Plan Quota Movements
+Required:
+- `-QuotaGroupPlan`
+- `-QuotaGroupManagementGroupName`
+- `-QuotaGroupName`
+- Scope input: `-AllSubscriptions` or `-SubscriptionId`
+- Region input: `-RegionPreset` or `-Region`
+
+Optional:
+- `-QuotaGroupCandidates` (export standalone candidates report before/with plan)
+- `-QuotaGroupDiscover` (helpful when target group is not yet known)
+- `-QuotaGroupMinMovable`, `-QuotaGroupSafetyBuffer` (tuning)
+- `-QuotaGroupReportPath`, `-ExportPath` (custom output paths)
+
 ```powershell
-# Generate a plan showing proposed quota allocations to the group
+# Minimal: build a plan for a known group target
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -QuotaGroupPlan `
+    -QuotaGroupManagementGroupName "<management-group-name>" `
+    -QuotaGroupName "<quota-group-name>"
+
+# Optional tuning and output paths
 .\Get-AzVMAvailability.ps1 `
     -NoPrompt `
     -AllSubscriptions `
     -RegionPreset USMajor `
     -QuotaGroupCandidates `
-    -QuotaGroupDiscover `
     -QuotaGroupPlan `
     -QuotaGroupManagementGroupName "<management-group-name>" `
     -QuotaGroupName "<quota-group-name>" `
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
-    -QuotaHistoryPath "C:\QuotaPlanning\History" `
     -QuotaGroupReportPath "C:\QuotaPlanning\Plans" `
     -ExportPath "C:\QuotaPlanning\Reports"
 
@@ -311,14 +342,41 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
 ```
 
 ### Quota Group: Apply Quota Movements
+Required:
+- `-QuotaGroupApply`
+- `-QuotaGroupPlan`
+- `-QuotaGroupManagementGroupName`
+- `-QuotaGroupName`
+- Scope input: `-AllSubscriptions` or `-SubscriptionId`
+- Region input: `-RegionPreset` or `-Region`
+- Interactive confirmation: type `APPLY` when prompted
+- Non-interactive confirmation (`-NoPrompt`): add `-QuotaGroupForceConfirm`
+
+Optional:
+- `-QuotaGroupApplyMaxChanges` (safety cap)
+- `-QuotaGroupCandidates` (export candidates alongside plan/apply)
+- `-QuotaGroupMinMovable`, `-QuotaGroupSafetyBuffer` (tuning)
+- `-QuotaGroupReportPath`, `-ExportPath` (custom output paths)
+
 ```powershell
-# Apply approved quota movements from the plan
+# Minimal automation apply
+.\Get-AzVMAvailability.ps1 `
+    -NoPrompt `
+    -AllSubscriptions `
+    -RegionPreset USMajor `
+    -QuotaGroupPlan `
+    -QuotaGroupApply `
+    -QuotaGroupForceConfirm `
+    -QuotaGroupManagementGroupName "<management-group-name>" `
+    -QuotaGroupName "<quota-group-name>" `
+    -QuotaGroupApplyMaxChanges 5
+
+# Optional tuning and output paths
 .\Get-AzVMAvailability.ps1 `
     -NoPrompt `
     -AllSubscriptions `
     -RegionPreset USMajor `
     -QuotaGroupCandidates `
-    -QuotaGroupDiscover `
     -QuotaGroupPlan `
     -QuotaGroupApply `
     -QuotaGroupForceConfirm `
@@ -327,7 +385,6 @@ Connect-AzAccount -Tenant YourTenantIdHere -subscription YourSubIdHere
     -QuotaGroupMinMovable 15 `
     -QuotaGroupSafetyBuffer 12 `
     -QuotaGroupApplyMaxChanges 5 `
-    -QuotaHistoryPath "C:\QuotaPlanning\History" `
     -QuotaGroupReportPath "C:\QuotaPlanning\Plans" `
     -ExportPath "C:\QuotaPlanning\Reports"
 
